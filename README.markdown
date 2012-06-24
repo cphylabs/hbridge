@@ -15,6 +15,16 @@ This project is currently actively developed and maintained.  It is used in a la
 
 ## Installation
 
+SBT based dependency setup
+```
+// Global Repository resolver
+resolvers ++= Seq("CphyLabs-Repo" at "http://cphylabs.github.com/hbridge/repository")
+libraryDependencies ++= Seq("com.cloudphysics" % "hbridge" % "0.0.1")
+```
+
+Clone this project and execute
+```mvn install```
+
 This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HBridge in your own maven project, simply add it as a dependency:
 
 ```xml
@@ -22,7 +32,7 @@ This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HBrid
     <repository>
         <id>HBridge</id>
         <name>HBridge-Repo</name>
-        <url>http://cphylabs.github.com/HBridge/repository/</url>
+        <url>http://cphylabs.github.com/hbridge/repository</url>
         <layout>default</layout>
     </repository>
  </repositories>

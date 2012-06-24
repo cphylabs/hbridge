@@ -1,6 +1,6 @@
 package com.cloudphysics.test
 
-import com.cloudphysics.model._
+import com.cloudphysics._
 import org.specs._
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.HTable

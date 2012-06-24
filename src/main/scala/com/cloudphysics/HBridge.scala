@@ -9,7 +9,7 @@ import org.joda.time.format.ISODateTimeFormat
 import org.apache.hadoop.hbase.{ HBaseConfiguration, HTableDescriptor, HColumnDescriptor }
 import org.apache.hadoop.hbase.filter._
 import grizzled.slf4j.Logging
-import com.cloudphysics.HBridgeConfig
+
 
 object HBridge extends Logging {
 
@@ -144,9 +144,9 @@ object HBridge extends Logging {
   }
 
 
-  def withHbasePut(hbaseConfig: HBridgeConfig, rowKey : Any, family: Any, qualifier: Any, value: Any)(f : (com.cloudphysics.HBridge, Any,Any,Any,Any,Any))
+  def withHbasePut(hbaseConfig: HBridgeConfig, rowKey : Any, family: Any, qualifier: Any, value: Any)(f : (HBridge, Any,Any,Any, Any) => Unit)
   {
-    val hbridge = new com.cloudphysics.HBridge(hbaseConfig.hbasetable, HBridge.setHbaseConfig(hbaseConfig))
+    val hbridge = new HBridge(hbaseConfig.hbasetable, HBridge.setHbaseConfig(hbaseConfig))
         hbridge.setAutoFlush(false)
         try {
           f(hbridge, rowKey, family , qualifier, value)
@@ -156,9 +156,9 @@ object HBridge extends Logging {
         }
   }
 
-  def withHbasePutCollection(hbaseConfig: HBridgeConfig, rowKey: String, dataMap: List[(String, String)], timeStamp: Long)(f: (com.cloudphysics.HBridge, String, String, List[(String, String)], Long) => Unit) {
+  def withHbasePutCollection(hbaseConfig: HBridgeConfig, rowKey: String, dataMap: List[(String, String)], timeStamp: Long)(f: (HBridge, String, String, List[(String, String)], Long) => Unit) {
 
-    val hbridge = new com.cloudphysics.HBridge(hbaseConfig.hbasetable, HBridge.setHbaseConfig(hbaseConfig))
+    val hbridge = new HBridge(hbaseConfig.hbasetable, HBridge.setHbaseConfig(hbaseConfig))
     hbridge.setAutoFlush(false)
     try {
       f(hbridge, rowKey, hbaseConfig.hbaseColumFamily, dataMap, timeStamp)
