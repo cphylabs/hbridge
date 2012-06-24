@@ -47,7 +47,6 @@ This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HBrid
 
 ## Quickstart
 
-Here's some quick code examples to give you a sense of what you're getting into.  All of the examples in the sections below come from the HPaste unit tests.  Specifically the file [WebCrawlSchemaTest.scala](https://github.com/GravityLabs/HPaste/blob/master/src/test/scala/com/gravity/hbase/schema/WebCrawlSchemaTest.scala).  If you go to that file and follow along with the explanations below, things will make more sense.
 
 This library is composed of 2 simple abstractions :
 
