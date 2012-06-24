@@ -1,0 +1,6 @@
+hbasetable: phyinv
+hbaseColumFamily: t
+hbaseZookeeperQuorum : gyanaad1
+hbaseZookeeperClientPort : 2181
+hbaseWriteBufferSize : 20971520
+hbaseMaster : gyanaad1:60000

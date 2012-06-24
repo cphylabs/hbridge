@@ -1,0 +1,9 @@
+/lib_managed/*
+/target/*
+/project/target/*
+/project/project/*
+/.idea/*
+/.idea_modules/*
+*.iml
+*.ipr
+*.iws
