@@ -25,24 +25,6 @@
             <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>com.typesafe.akka</groupId>
-            <artifactId>akka-actor</artifactId>
-            <version>2.0-RC2</version>
-            <scope>compile</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.typesafe.akka</groupId>
-            <artifactId>akka-remote</artifactId>
-            <version>2.0-RC2</version>
-            <scope>compile</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.typesafe.akka</groupId>
-            <artifactId>akka-kernel</artifactId>
-            <version>2.0-RC2</version>
-            <scope>compile</scope>
-        </dependency>
-        <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-core</artifactId>
             <version>0.20.2</version>
@@ -74,21 +56,7 @@
         <version>1.6.9</version>
         <scope>test</scope>
     </dependency>
-
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.7</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.10</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
+       <dependency>
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
             <version>1.8</version>
@@ -99,24 +67,7 @@
         <artifactId>grizzled-slf4j_2.9.2</artifactId>
         <version>0.6.9</version>
       </dependency>
-        <dependency>
-            <groupId>net.liftweb</groupId>
-            <artifactId>lift-json_2.9.1</artifactId>
-            <version>2.4</version>
-            <scope>compile</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.github.scala-incubator.io</groupId>
-            <artifactId>scala-io-core_2.9.1</artifactId>
-            <version>0.3.0</version>
-            <scope>compile</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.github.scala-incubator.io</groupId>
-            <artifactId>scala-io-file_2.9.1</artifactId>
-            <version>0.3.0</version>
-            <scope>compile</scope>
-        </dependency>
+
         <dependency>
             <groupId>joda-time</groupId>
             <artifactId>joda-time</artifactId>
@@ -129,20 +80,10 @@
             <version>1.1</version>
             <scope>compile</scope>
         </dependency>
-        <dependency>
-            <groupId>com.codahale</groupId>
-            <artifactId>jerkson_2.9.1</artifactId>
-            <version>0.5.1-SNAPSHOT</version>
-            <scope>compile</scope>
-        </dependency>
+
     </dependencies>
     <repositories>
-        <repository>
-            <id>ThriftRepo</id>
-            <name>Thrift-Repo</name>
-            <url>http://people.apache.org/~rawson/repo/</url>
-            <layout>default</layout>
-        </repository>
+
         <repository>
             <id>Clouderajdo</id>
             <name>Cloudera-jdo</name>
@@ -179,12 +120,7 @@
             <url>http://scala-tools.org/repo-releases/</url>
             <layout>default</layout>
         </repository>
-        <repository>
-            <id>Codahale</id>
-            <name>Codahale</name>
-            <url>http://conikeec.github.com/jerkson/repository/</url>
-            <layout>default</layout>
-        </repository>
+
         <repository>
             <id>ApacheHBase</id>
             <name>Apache HBase</name>
