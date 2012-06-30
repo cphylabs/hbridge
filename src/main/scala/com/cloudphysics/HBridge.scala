@@ -1,4 +1,4 @@
-package com.cloudphysics
+package com.cloudphysics.hbridge
 
 import scala.collection.JavaConversions._
 import org.apache.hadoop.conf.Configuration
@@ -11,11 +11,71 @@ import org.apache.hadoop.hbase.filter._
 import grizzled.slf4j.Logging
 
 
+/*
+Use Case Pattern
+
+-- Initialize upfront during startup
+val hbridgeConfig : HBridgeConfig =  HBridgeConfig(...)
+val hbridge : HBridge = HBridge(hbridgeConfig, tableName)
+
+-- perhaps in a loop
+hbridge.setAutoFlush(false)
+try {
+  f(hbridge, rowKey, family , qualifier, value)
+} finally {
+  hbridge.commit
+  hbridge.returnToPool
+}
+
+-- tear down when done
+hbridge.closeTablePool(tableName)
+
+
+ */
+
+
+object Benchmark {
+  def time(description : String )(f: => Unit)={
+  	val s = System.currentTimeMillis
+  	f
+    println(System.currentTimeMillis - s)
+  }
+  import java.util.Date
+  def profile[T](body: => T) = {
+        val start = new Date()
+        val result = body
+        val end = new Date()
+        println("Execution took " + (end.getTime() - start.getTime()) / 1000 + " seconds")
+        result
+    }
+
+}
+
 object HBridge extends Logging {
 
+  val MAX = 200
   val DEFAULT_CONF_PATH = "resources/hbase-site.xml"
+  private var htablePool : Option[HTablePool] = None
 
-  def setHbaseConfig(hbaseConfig: HBridgeConfig): Configuration = {
+
+  def apply(hbaseConfig: HBridgeConfig, tableName : String) = {
+     val conf : Configuration = setHbaseConfig(hbaseConfig)
+     htablePool = Some(new HTablePool(conf, MAX))
+     new HBridge(htablePool,tableName)
+  }
+
+  def apply(hbaseConfig: Configuration , tableName : String) = {
+       htablePool = Some(new HTablePool(hbaseConfig, MAX))
+
+       new HBridge(htablePool,tableName)
+  }
+
+
+  def closeTablePool(tableName : String) = if(htablePool.isDefined) htablePool.get.closeTablePool(tableName)
+  def deleteAllConnections = HBridge.terminateClient()
+
+
+  private def setHbaseConfig(hbaseConfig: HBridgeConfig): Configuration = {
 
     val conf: Configuration = HBaseConfiguration.create()
     conf.clear()
@@ -144,42 +204,42 @@ object HBridge extends Logging {
   }
 
 
-  def withHbasePut(hbaseConfig: HBridgeConfig, rowKey : Any, family: Any, qualifier: Any, value: Any)(f : (HBridge, Any,Any,Any, Any) => Unit)
+  def withHbasePut(hbridge : HBridge, rowKey : Any, family: Any, qualifier: Any, value: Any)(f : (HBridge, Any,Any,Any, Any) => Unit)
   {
-    val hbridge = new HBridge(hbaseConfig.hbasetable, HBridge.setHbaseConfig(hbaseConfig))
-        hbridge.setAutoFlush(false)
-        try {
-          f(hbridge, rowKey, family , qualifier, value)
-        } finally {
-          hbridge.commit
-          hbridge.close
-        }
-  }
-
-  def withHbasePutCollection(hbaseConfig: HBridgeConfig, rowKey: String, dataMap: List[(String, String)], timeStamp: Long)(f: (HBridge, String, String, List[(String, String)], Long) => Unit) {
-
-    val hbridge = new HBridge(hbaseConfig.hbasetable, HBridge.setHbaseConfig(hbaseConfig))
     hbridge.setAutoFlush(false)
     try {
-      f(hbridge, rowKey, hbaseConfig.hbaseColumFamily, dataMap, timeStamp)
+      f(hbridge, rowKey, family , qualifier, value)
     } finally {
       hbridge.commit
-      hbridge.close
+      hbridge.returnToPool
+
     }
   }
 
-  def batchInsertIntoHbase(hbaseConfig: HBridgeConfig)(rowKey: String, timeStamp: Long, dataMap: List[(String, String)]) {
+  def withHbasePutCollection(hbridge : HBridge, rowKey: String, family: String, dataMap: List[(String, String)], timeStamp: Long)(f: (HBridge, String, String, List[(String, String)], Long) => Unit) {
+     hbridge.setAutoFlush(false)
+    try {
+      f(hbridge, rowKey, family, dataMap, timeStamp)
+    } finally {
+      hbridge.commit
+      hbridge.returnToPool
 
-    withHbasePutCollection(hbaseConfig, rowKey, dataMap, timeStamp) {
+    }
+  }
+
+  def batchInsertIntoHbase(hbridge : HBridge)(rowKey: String, family : String, timeStamp: Long, dataMap: List[(String, String)]) {
+
+    withHbasePutCollection(hbridge, rowKey, family, dataMap, timeStamp) {
       (hbridge, rowKey, columnFamily, dataMap, timeStamp) =>
         hbridge.putBuffering(rowKey, columnFamily, dataMap, timeStamp)
+
     }
 
   }
 
-  def insertIntoHbase(hbaseConfig: HBridgeConfig)(rowKey: String, timeStamp: Long, dataMap: List[(String, String)]) {
+  def insertIntoHbase(hbridge : HBridge)(rowKey: String, family : String,timeStamp: Long, dataMap: List[(String, String)]) {
 
-    withHbasePutCollection(hbaseConfig, rowKey, dataMap, timeStamp) {
+    withHbasePutCollection(hbridge, rowKey, family, dataMap, timeStamp) {
       (hbridge, rowKey, columnFamily, dataMap, timeStamp) =>
         hbridge.putDataMap(rowKey, columnFamily, dataMap, timeStamp)
     }
@@ -187,9 +247,9 @@ object HBridge extends Logging {
   }
 }
 
-class HBridge(tableName: String, conf: Configuration = null) extends Logging {
+class HBridge(htablePool : Option[HTablePool], tableName : String) extends Logging {
 
-  val table = new HTable(conf, tableName)
+  val table : HTable = htablePool.get.getTable(tableName).asInstanceOf[HTable]
 
   /*
   Regex Variables to type Inference based on Value in a Typed Map with values normalized to Strings a.k.a Map[String,String]
@@ -206,6 +266,9 @@ class HBridge(tableName: String, conf: Configuration = null) extends Logging {
   val NullValue = """[Nn]ull""".r
   val EmptyValue = """\[\]""".r
   val GuidValue = """[\w]+-[\w]+-[\w]+-[\w]+-[\w]+""".r
+
+
+
 
   def putBuffering(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
 
@@ -243,7 +306,12 @@ class HBridge(tableName: String, conf: Configuration = null) extends Logging {
         }
     }
 
-    table.put(putList)
+    val size = putList.size
+
+    val putLists =  putList.grouped(size/4).toList
+
+    logger.info(" Size for rowKey - " + rowKey + " is " + size)
+    putLists foreach {  list => logger.info("Woking Chunk Boundaries on Size " + list.size); table.put(list) }
   }
 
   def putDataMap(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
@@ -309,34 +377,34 @@ class HBridge(tableName: String, conf: Configuration = null) extends Logging {
       HBridge.toBytes(qualifier), value)
   }
 
-  def get(row: Any, family: Any, qualifier: Any): Array[Byte] = {
+  def get(row: Any, family: Any, qualifier: Any): Option[Array[Byte]] = {
     val result = table.get(new Get(HBridge.toBytes(row)))
-    return result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier))
+    Some(result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier)))
   }
 
-  def exists(row: Any): Boolean = table.exists(new Get(HBridge.toBytes(row)))
+  def exists(row: Any): Option[Boolean] = Some(table.exists(new Get(HBridge.toBytes(row))))
 
-  def exists(row: Any, family: Any, qualifier: Any): Boolean = {
+  def exists(row: Any, family: Any, qualifier: Any): Option[Boolean] = {
     val get = new Get(HBridge.toBytes(row))
     get.addColumn(HBridge.toBytes(family), HBridge.toBytes(qualifier))
-    table.exists(get)
+    Some(table.exists(get))
   }
 
-  def getDateString(row: Any, family: Any, qualifier: Any): String = {
-    val milliSeconds: Long = Bytes.toLong(get(row, family, qualifier))
+  def getDateString(row: Any, family: Any, qualifier: Any): Option[String] = {
+    val milliSeconds: Long = Bytes.toLong(get(row, family, qualifier).get)
     val zoneUTC = DateTimeZone.UTC
     val dateTime = new DateTime(milliSeconds, zoneUTC)
-    dateTime.toString
+    Some(dateTime.toString)
   }
 
-  def getLong(row: Any, family: Any, qualifier: Any): Long =
-    Bytes.toLong(get(row, family, qualifier))
+  def getLong(row: Any, family: Any, qualifier: Any): Option[Long] =
+    Some(Bytes.toLong(get(row, family, qualifier).get))
 
-  def getDouble(row: Any, family: Any, qualifier: Any): Double =
-    Bytes.toDouble(get(row, family, qualifier))
+  def getDouble(row: Any, family: Any, qualifier: Any): Option[Double] =
+    Some(Bytes.toDouble(get(row, family, qualifier).get))
 
-  def getString(row: Any, family: Any, qualifier: Any): String =
-    Bytes.toString(get(row, family, qualifier))
+  def getString(row: Any, family: Any, qualifier: Any): Option[String] =
+    Some(Bytes.toString(get(row, family, qualifier).get))
 
   def get(row: Any,
     func: (Array[Byte], Array[Byte], Array[Byte]) => Unit) {
@@ -482,7 +550,7 @@ class HBridge(tableName: String, conf: Configuration = null) extends Logging {
       for (
         item <- rs;
         keyvalue <- item.raw()
-      ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), Bytes.toLong(keyvalue.getValue))
+      ) yield Option(Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), Bytes.toLong(keyvalue.getValue))
     } finally {
       rs.close()
     }
@@ -524,12 +592,14 @@ class HBridge(tableName: String, conf: Configuration = null) extends Logging {
       for (
         item <- rs;
         keyvalue <- item.raw()
-      ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), getValueByType(Bytes.toString(keyvalue.getQualifier), keyvalue.getValue))
+      ) yield Option(Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), getValueByType(Bytes.toString(keyvalue.getQualifier), keyvalue.getValue))
 
     } finally {
       rs.close()
     }
   }
+
+
 
   def scanRowWithFilterList(rowExp: String, qualifierExp: String) = {
     var filters = new java.util.ArrayList[Filter]()
@@ -633,7 +703,6 @@ class HBridge(tableName: String, conf: Configuration = null) extends Logging {
   def setAutoFlush(flushState: Boolean) = table.setAutoFlush(flushState)
   def isAutoFlush: Boolean = table.isAutoFlush
   def commit = table.flushCommits()
-
-  def close = table.close
+  def returnToPool =  htablePool.get.putTable(table)
 
 }

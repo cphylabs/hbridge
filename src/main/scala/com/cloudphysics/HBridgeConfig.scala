@@ -1,6 +1,4 @@
-package com.cloudphysics
-
-import reflect.BeanProperty
+package com.cloudphysics.hbridge
 
 object DataType extends Enumeration {
   type DataType = Value
@@ -14,26 +12,3 @@ case class HBridgeConfig(hbaseZookeeperQuorum: String,
   hbasetable: String,
   hbaseColumFamily: String)
 
-
-class InventoryConfig {
-
-  @BeanProperty var hbasetable: String = null
-  @BeanProperty var hbaseColumFamily: String = null
-  @BeanProperty var hbaseZookeeperQuorum: String = null
-  @BeanProperty var hbaseZookeeperClientPort: String = null
-  @BeanProperty var hbaseWriteBufferSize: String = null
-  @BeanProperty var hbaseMaster: String = null
-
-  def getHbaseConfiguration: com.cloudphysics.HBridgeConfig = {
-    val conf = HBridgeConfig(hbaseZookeeperQuorum,
-      hbaseZookeeperClientPort,
-      hbaseWriteBufferSize,
-      hbaseMaster,
-      hbasetable, hbaseColumFamily)
-    conf
-  }
-
-  override def toString: String = {
-    return String.format("hbasetable (%s), hbaseconfig (%s)", hbasetable, getHbaseConfiguration)
-  }
-}
