@@ -4,7 +4,7 @@
 
   <groupId>com.cloudphysics</groupId>
   <artifactId>hbridge</artifactId>
-  <version>0.0.4</version>
+  <version>0.0.5</version>
   <packaging>jar</packaging>
 
   <name>HBridge</name>
