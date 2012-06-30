@@ -547,10 +547,14 @@ class HBridge(htablePool : Option[HTablePool], tableName : String) extends Loggi
     scan.setFilter(filter)
     val rs = table.getScanner(scan)
     try {
+      val valueRs = Option(
       for (
         item <- rs;
         keyvalue <- item.raw()
-      ) yield Option(Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), Bytes.toLong(keyvalue.getValue))
+      ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), Bytes.toLong(keyvalue.getValue)))
+
+      valueRs getOrElse None
+
     } finally {
       rs.close()
     }
@@ -588,11 +592,13 @@ class HBridge(htablePool : Option[HTablePool], tableName : String) extends Loggi
     scan.setFilter(filter)
     val rs = table.getScanner(scan)
     try {
-
+      val valueRs =  Option(
       for (
         item <- rs;
         keyvalue <- item.raw()
-      ) yield Option(Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), getValueByType(Bytes.toString(keyvalue.getQualifier), keyvalue.getValue))
+      ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), getValueByType(Bytes.toString(keyvalue.getQualifier), keyvalue.getValue)))
+
+      valueRs getOrElse None
 
     } finally {
       rs.close()
