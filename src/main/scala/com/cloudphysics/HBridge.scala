@@ -304,7 +304,7 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
     }
 
     val size = putList.size
-    val putLists =  putList.grouped(size/chunkSize).toList
+    val putLists =  if (size > chunkSize) putList.grouped(size/chunkSize).toList else putList.grouped(size).toList
     logger.info(" Size for rowKey - " + rowKey + " is " + size)
     putLists foreach {  list => logger.info("Woking Chunk Boundaries on Size " + list.size); table.put(list) }
   }
