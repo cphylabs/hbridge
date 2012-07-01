@@ -41,7 +41,7 @@ class HBridgeSpec extends SpecificationWithJUnit with HBaseTestCluster {
       val min = hbridge.getString("machine1", "jvmheap", "min").get
       min mustEqual "300"
       hbridge.returnToPool
-      HBridge.closeTablePool(TABLE_NAME)
+      hbridge.closeTablePool(TABLE_NAME)
     }
 
 
