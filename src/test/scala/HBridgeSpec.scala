@@ -35,7 +35,7 @@ class HBridgeSpec extends SpecificationWithJUnit with HBaseTestCluster {
     "perform standard Put Operation" in {
 
 
-      val hbridge = HBridge(hBaseTestingUtility.getConfiguration,TABLE_NAME)
+      val hbridge = HBridge(hBaseTestingUtility.getConfiguration,TABLE_NAME,10)
       hbridge.put("machine1", "jvmheap", "min", "300")
       hbridge.put("machine1", "jvmheap", "max", "10000")
       val min = hbridge.getString("machine1", "jvmheap", "min").get

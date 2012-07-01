@@ -16,7 +16,7 @@ Use Case Pattern
 
 -- Initialize upfront during startup
 val hbridgeConfig : HBridgeConfig =  HBridgeConfig(...)
-val hbridge : HBridge = HBridge(hbridgeConfig, tableName)
+val hbridge : HBridge = HBridge(hbridgeConfig, tableName,poolSize)
 
 -- perhaps in a loop
 hbridge.setAutoFlush(false)
@@ -52,22 +52,19 @@ object Benchmark {
 }
 
 object HBridge extends Logging {
-
-  val MAX = 200
   val DEFAULT_CONF_PATH = "resources/hbase-site.xml"
   private var htablePool : Option[HTablePool] = None
 
 
-  def apply(hbaseConfig: HBridgeConfig, tableName : String) = {
+  def apply(hbaseConfig: HBridgeConfig, tableName : String, poolSize : Int) = {
      val conf : Configuration = setHbaseConfig(hbaseConfig)
-     htablePool = Some(new HTablePool(conf, MAX))
+     htablePool = Some(new HTablePool(conf, poolSize))
      new HBridge(htablePool,tableName)
   }
 
-  def apply(hbaseConfig: Configuration , tableName : String) = {
-       htablePool = Some(new HTablePool(hbaseConfig, MAX))
-
-       new HBridge(htablePool,tableName)
+  def apply(hbaseConfig: Configuration , tableName : String,poolSize : Int) = {
+       htablePool = Some(new HTablePool(hbaseConfig, poolSize))
+      new HBridge(htablePool,tableName)
   }
 
 
