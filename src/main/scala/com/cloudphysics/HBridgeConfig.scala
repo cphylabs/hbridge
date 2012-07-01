@@ -8,7 +8,6 @@ object DataType extends Enumeration {
 case class HBridgeConfig(hbaseZookeeperQuorum: String,
   hbaseZookeeperClientPort: String,
   hbaseWriteBufferSize: String,
-  hbaseMaster: String,
-  hbasetable: String,
-  hbaseColumFamily: String)
+  hbaseMaster: String
+  )
 
