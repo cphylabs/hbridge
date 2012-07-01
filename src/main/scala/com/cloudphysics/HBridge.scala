@@ -56,15 +56,15 @@ object HBridge extends Logging {
   private var htablePool : Option[HTablePool] = None
 
 
-  def apply(hbaseConfig: HBridgeConfig, tableName : String, poolSize : Int) = {
+  def apply(hbaseConfig: HBridgeConfig, tableName : String, poolSize : Int, chunkSize : Int) = {
      val conf : Configuration = setHbaseConfig(hbaseConfig)
      htablePool = Some(new HTablePool(conf, poolSize))
-     new HBridge(htablePool,tableName)
+     new HBridge(htablePool,tableName,chunkSize)
   }
 
-  def apply(hbaseConfig: Configuration , tableName : String,poolSize : Int) = {
+  def apply(hbaseConfig: Configuration , tableName : String,poolSize : Int, chunkSize : Int) = {
        htablePool = Some(new HTablePool(hbaseConfig, poolSize))
-      new HBridge(htablePool,tableName)
+      new HBridge(htablePool,tableName,chunkSize)
   }
 
 
@@ -244,7 +244,7 @@ object HBridge extends Logging {
   }
 }
 
-class HBridge(htablePool : Option[HTablePool], tableName : String) extends Logging {
+class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : Int) extends Logging {
 
   val table : HTable = htablePool.get.getTable(tableName).asInstanceOf[HTable]
   def closeTablePool(tableName : String) = if(!htablePool.eq(None)) htablePool.get.closeTablePool(tableName)
@@ -304,9 +304,7 @@ class HBridge(htablePool : Option[HTablePool], tableName : String) extends Loggi
     }
 
     val size = putList.size
-
-    val putLists =  putList.grouped(size/4).toList
-
+    val putLists =  putList.grouped(size/chunkSize).toList
     logger.info(" Size for rowKey - " + rowKey + " is " + size)
     putLists foreach {  list => logger.info("Woking Chunk Boundaries on Size " + list.size); table.put(list) }
   }
