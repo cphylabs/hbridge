@@ -58,12 +58,12 @@ object HBridge extends Logging {
 
   def apply(hbaseConfig: HBridgeConfig, tableName : String, poolSize : Int, chunkSize : Int) = {
      val conf : Configuration = setHbaseConfig(hbaseConfig)
-     htablePool = Some(new HTablePool(conf, poolSize))
+     htablePool = Option(new HTablePool(conf, poolSize))
      new HBridge(htablePool,tableName,chunkSize)
   }
 
   def apply(hbaseConfig: Configuration , tableName : String,poolSize : Int, chunkSize : Int) = {
-       htablePool = Some(new HTablePool(hbaseConfig, poolSize))
+       htablePool = Option(new HTablePool(hbaseConfig, poolSize))
       new HBridge(htablePool,tableName,chunkSize)
   }
 
@@ -203,24 +203,20 @@ object HBridge extends Logging {
 
   def withHbasePut(hbridge : HBridge, rowKey : Any, family: Any, qualifier: Any, value: Any)(f : (HBridge, Any,Any,Any, Any) => Unit)
   {
-    hbridge.setAutoFlush(false)
+    hbridge.setAutoFlush(true)
     try {
       f(hbridge, rowKey, family , qualifier, value)
     } finally {
-      hbridge.commit
       hbridge.returnToPool
-
-    }
+   }
   }
 
   def withHbasePutCollection(hbridge : HBridge, rowKey: String, family: String, dataMap: List[(String, String)], timeStamp: Long)(f: (HBridge, String, String, List[(String, String)], Long) => Unit) {
-     hbridge.setAutoFlush(false)
+     hbridge.setAutoFlush(true)
     try {
       f(hbridge, rowKey, family, dataMap, timeStamp)
     } finally {
-      hbridge.commit
       hbridge.returnToPool
-
     }
   }
 
@@ -305,8 +301,7 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
 
     val size = putList.size
     val putLists =  if (size > chunkSize) putList.grouped(size/chunkSize).toList else putList.grouped(size).toList
-    logger.info(" Size for rowKey - " + rowKey + " is " + size)
-    putLists foreach {  list => logger.info("Woking Chunk Boundaries on Size " + list.size); table.put(list) }
+    putLists foreach {  list => table.put(list) }
   }
 
   def putDataMap(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
@@ -374,32 +369,32 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
 
   def get(row: Any, family: Any, qualifier: Any): Option[Array[Byte]] = {
     val result = table.get(new Get(HBridge.toBytes(row)))
-    Some(result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier)))
+    Option(result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier)))
   }
 
-  def exists(row: Any): Option[Boolean] = Some(table.exists(new Get(HBridge.toBytes(row))))
+  def exists(row: Any): Option[Boolean] = Option(table.exists(new Get(HBridge.toBytes(row))))
 
   def exists(row: Any, family: Any, qualifier: Any): Option[Boolean] = {
     val get = new Get(HBridge.toBytes(row))
     get.addColumn(HBridge.toBytes(family), HBridge.toBytes(qualifier))
-    Some(table.exists(get))
+    Option(table.exists(get))
   }
 
   def getDateString(row: Any, family: Any, qualifier: Any): Option[String] = {
     val milliSeconds: Long = Bytes.toLong(get(row, family, qualifier).get)
     val zoneUTC = DateTimeZone.UTC
     val dateTime = new DateTime(milliSeconds, zoneUTC)
-    Some(dateTime.toString)
+    Option(dateTime.toString)
   }
 
   def getLong(row: Any, family: Any, qualifier: Any): Option[Long] =
-    Some(Bytes.toLong(get(row, family, qualifier).get))
+    Option(Bytes.toLong(get(row, family, qualifier).get))
 
   def getDouble(row: Any, family: Any, qualifier: Any): Option[Double] =
-    Some(Bytes.toDouble(get(row, family, qualifier).get))
+    Option(Bytes.toDouble(get(row, family, qualifier).get))
 
   def getString(row: Any, family: Any, qualifier: Any): Option[String] =
-    Some(Bytes.toString(get(row, family, qualifier).get))
+    Option(Bytes.toString(get(row, family, qualifier).get))
 
   def get(row: Any,
     func: (Array[Byte], Array[Byte], Array[Byte]) => Unit) {
