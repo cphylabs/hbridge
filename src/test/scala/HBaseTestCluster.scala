@@ -1,4 +1,4 @@
-package com.cloudphysics.test
+package com.cloudphysics.data.test
 
 import org.apache.hadoop.hbase.client.HBaseAdmin
 import org.apache.hadoop.hbase.HBaseTestingUtility

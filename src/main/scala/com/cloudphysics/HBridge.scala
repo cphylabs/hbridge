@@ -1,4 +1,4 @@
-package com.cloudphysics.hbridge
+package com.cloudphysics.data
 
 import scala.collection.JavaConversions._
 import org.apache.hadoop.conf.Configuration
@@ -9,79 +9,33 @@ import org.joda.time.format.ISODateTimeFormat
 import org.apache.hadoop.hbase.{ HBaseConfiguration, HTableDescriptor, HColumnDescriptor }
 import org.apache.hadoop.hbase.filter._
 import grizzled.slf4j.Logging
+import HDataType._
 
-
-/*
-Use Case Pattern
-
--- Initialize upfront during startup
-val hbridgeConfig : HBridgeConfig =  HBridgeConfig(...)
-val hbridge : HBridge = HBridge(hbridgeConfig, tableName,poolSize)
-
--- perhaps in a loop
-hbridge.setAutoFlush(false)
-try {
-  f(hbridge, rowKey, family , qualifier, value)
-} finally {
-  hbridge.commit
-  hbridge.returnToPool
-}
-
--- tear down when done
-hbridge.closeTablePool(tableName)
-
-
- */
-
-
-object Benchmark {
-  def time(description : String )(f: => Unit)={
-  	val s = System.currentTimeMillis
-  	f
-    println(System.currentTimeMillis - s)
+object Benchmark extends Logging {
+  def time(description: String)(f: => Unit) = {
+    val s = System.currentTimeMillis
+    f
+    logger.info(System.currentTimeMillis - s)
   }
   import java.util.Date
   def profile[T](body: => T) = {
-        val start = new Date()
-        val result = body
-        val end = new Date()
-        println("Execution took " + (end.getTime() - start.getTime()) / 1000 + " seconds")
-        result
-    }
-
+    val start = new Date()
+    val result = body
+    val end = new Date()
+    logger.info("Execution took " + (end.getTime() - start.getTime()) / 1000 + " seconds")
+    result
+  }
 }
 
 object HBridge extends Logging {
-  val DEFAULT_CONF_PATH = "resources/hbase-site.xml"
-  private var htablePool : Option[HTablePool] = None
 
+  private def CHUNK_SIZE = 5
 
-  def apply(hbaseConfig: HBridgeConfig, tableName : String, poolSize : Int, chunkSize : Int) = {
-     val conf : Configuration = setHbaseConfig(hbaseConfig)
-     htablePool = Option(new HTablePool(conf, poolSize))
-     new HBridge(htablePool,tableName,chunkSize)
+  def apply(hbridgeConfig: HBridgeConfig, tableName: String) = {
+    new HBridge(hbridgeConfig.htablePool, tableName)
   }
-
-  def apply(hbaseConfig: Configuration , tableName : String,poolSize : Int, chunkSize : Int) = {
-       htablePool = Option(new HTablePool(hbaseConfig, poolSize))
-      new HBridge(htablePool,tableName,chunkSize)
-  }
-
-
 
   def deleteAllConnections = HBridge.terminateClient()
-
-
-  private def setHbaseConfig(hbaseConfig: HBridgeConfig): Configuration = {
-
-    val conf: Configuration = HBaseConfiguration.create()
-    conf.clear()
-    conf.set("hbase.zookeeper.quorum", hbaseConfig.hbaseZookeeperQuorum)
-    conf.set("hbase.zookeeper.property.clientPort", hbaseConfig.hbaseZookeeperClientPort)
-    conf.set("hbase.master", hbaseConfig.hbaseMaster)
-    conf.set("hbase.client.write.buffer", hbaseConfig.hbaseWriteBufferSize)
-    conf
-  }
 
   def terminateClient() { HConnectionManager.deleteAllConnections(true) }
 
@@ -98,12 +52,11 @@ object HBridge extends Logging {
       return Bytes.toBytes(value.asInstanceOf[Double])
     if (value.isInstanceOf[Boolean])
       return Bytes.toBytes(value.asInstanceOf[Boolean])
-
     return Bytes.toBytes(value.toString)
   }
 
   def withHadmin(configObject: HBridgeConfig, tableName: String = null)(f: (HBaseAdmin, String) => Any) {
-    val conf: Configuration = setHbaseConfig(configObject)
+    val conf: Configuration = configObject.configuration.get
     val hAdmin = new HBaseAdmin(conf)
     try {
       f(hAdmin, tableName)
@@ -113,7 +66,6 @@ object HBridge extends Logging {
   }
 
   def create(tableName: String, families: List[String], configObject: HBridgeConfig) {
-
     withHadmin(configObject, tableName) {
       (hAdmin, tableName) =>
         val descriptor = new HTableDescriptor(tableName)
@@ -200,54 +152,54 @@ object HBridge extends Logging {
     }
   }
 
-
-  def withHbasePut(hbridge : HBridge, rowKey : Any, family: Any, qualifier: Any, value: Any)(f : (HBridge, Any,Any,Any, Any) => Unit)
-  {
-    hbridge.setAutoFlush(true)
+  def withHbasePut(hbridge: HBridge, rowKey: Any, family: Any, qualifier: Any, value: Any)(f: (HBridge, Any, Any, Any, Any) => Unit) {
+    hbridge.setAutoFlush(false)
     try {
-      f(hbridge, rowKey, family , qualifier, value)
+      f(hbridge, rowKey, family, qualifier, value)
     } finally {
+      hbridge.commit
       hbridge.returnToPool
-   }
+    }
   }
 
-  def withHbasePutCollection(hbridge : HBridge, rowKey: String, family: String, dataMap: List[(String, String)], timeStamp: Long)(f: (HBridge, String, String, List[(String, String)], Long) => Unit) {
-     hbridge.setAutoFlush(true)
+  def withHbasePutCollection(hbridge: HBridge, rowKey: String, family: String, dataMap: List[(String, String)], timeStamp: Long)(f: (HBridge, String, String, List[(String, String)], Long) => Unit) {
+    hbridge.setAutoFlush(false)
     try {
       f(hbridge, rowKey, family, dataMap, timeStamp)
     } finally {
+      hbridge.commit
       hbridge.returnToPool
     }
   }
 
-  def batchInsertIntoHbase(hbridge : HBridge)(rowKey: String, family : String, timeStamp: Long, dataMap: List[(String, String)]) {
-
+  def batchInsertIntoHbase(hbridge: HBridge)(rowKey: String, family: String, timeStamp: Long, dataMap: List[(String, String)]) {
     withHbasePutCollection(hbridge, rowKey, family, dataMap, timeStamp) {
       (hbridge, rowKey, columnFamily, dataMap, timeStamp) =>
         hbridge.putBuffering(rowKey, columnFamily, dataMap, timeStamp)
-
     }
 
   }
 
-  def insertIntoHbase(hbridge : HBridge)(rowKey: String, family : String,timeStamp: Long, dataMap: List[(String, String)]) {
-
+  def insertIntoHbase(hbridge: HBridge)(rowKey: String, family: String, timeStamp: Long, dataMap: List[(String, String)]) {
     withHbasePutCollection(hbridge, rowKey, family, dataMap, timeStamp) {
       (hbridge, rowKey, columnFamily, dataMap, timeStamp) =>
         hbridge.putDataMap(rowKey, columnFamily, dataMap, timeStamp)
     }
-
   }
 }
 
-class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : Int) extends Logging {
+class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging {
 
-  val table : HTable = htablePool.get.getTable(tableName).asInstanceOf[HTable]
-  def closeTablePool(tableName : String) = if(!htablePool.eq(None)) htablePool.get.closeTablePool(tableName)
+  val table: HTable = htablePool.get.getTable(tableName).asInstanceOf[HTable]
+  def closeTablePool(tableName: String) = if (!htablePool.eq(None)) htablePool.get.closeTablePool(tableName)
+  def putTable = htablePool.get.putTable(table)
+  def setAutoFlush(flushState: Boolean) = table.setAutoFlush(flushState)
+  def isAutoFlush: Boolean = table.isAutoFlush
+  def commit = table.flushCommits()
+  def returnToPool = htablePool.get.close()
   /*
   Regex Variables to type Inference based on Value in a Typed Map with values normalized to Strings a.k.a Map[String,String]
   */
-
   val parser = ISODateTimeFormat.dateTime()
   val DigitValue = """-?\d+""".r
   val StringValue = """\w+-?\w+""".r
@@ -260,74 +212,66 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
   val EmptyValue = """\[\]""".r
   val GuidValue = """[\w]+-[\w]+-[\w]+-[\w]+-[\w]+""".r
 
-
-
-
   def putBuffering(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
 
     var putList = new java.util.ArrayList[Put]()
-
     dataMap foreach {
       case (columnKey, value) =>
         value match {
           case DigitValue() =>
-            val columnKeyWithType = columnKey + ":" + DataType.dLong.id
+            val columnKeyWithType = columnKey + ":" + HDataType.dLong.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
             putList.add(putData)
-
           case DateTime(d, t) =>
             val dateTime = new DateTime(value)
             val millSeconds: Long = dateTime.getMillis
-            val columnKeyWithType = columnKey + ":" + DataType.dTime.id
+            val columnKeyWithType = columnKey + ":" + HDataType.dTime.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, millSeconds)
             putList.add(putData)
-
           case BooleanValue() =>
-            val columnKeyWithType = columnKey + ":" + DataType.dBoolean.id
+            val columnKeyWithType = columnKey + ":" + HDataType.dBoolean.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toBoolean)
             putList.add(putData)
-
           case "null" | EmptyValue() | "" =>
             None
-
           case StringValue() | AlphaNumValue() | GuidValue() | _ =>
             if (value != "") {
-              val columnKeyWithType = columnKey + ":" + DataType.dString.id
+              val columnKeyWithType = columnKey + ":" + HDataType.dString.id
               val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
               putList.add(putData)
             }
         }
     }
-
     val size = putList.size
-    val putLists =  if (size > chunkSize) putList.grouped(size/chunkSize).toList else putList.grouped(size).toList
-    putLists foreach {  list => table.put(list) }
+    //val putLists = if (size > HBridge.CHUNK_SIZE) putList.grouped(size / HBridge.CHUNK_SIZE).toList else 
+    val putLists = putList.grouped(HBridge.CHUNK_SIZE).toList
+
+    putLists foreach { list => table.put(list) }
   }
 
   def putDataMap(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
-
     dataMap foreach {
       case (columnKey, value) =>
         value match {
           case DigitValue() =>
-            val columnKeyWithType = columnKey + ":" + DataType.dLong.id
+            val columnKeyWithType = columnKey + ":" + HDataType.dLong.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
             table.put(putData)
           case DateTime(d, t) =>
             val dateTime = new DateTime(value)
             val millSeconds: Long = dateTime.getMillis
-            val columnKeyWithType = columnKey + ":" + DataType.dTime.id
+            val columnKeyWithType = columnKey + ":" + HDataType.dTime.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, millSeconds)
             table.put(putData)
           case BooleanValue() =>
-            val columnKeyWithType = columnKey + ":" + DataType.dBoolean.id
+            val columnKeyWithType = columnKey + ":" + HDataType.dBoolean.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toBoolean)
             table.put(putData)
           case "null" | EmptyValue() | "" =>
             None
           case StringValue() | AlphaNumValue() | GuidValue() | _ =>
             if (value != "") {
-              val columnKeyWithType = columnKey + ":" + DataType.dString.id
+              val columnKeyWithType = columnKey + ":" + HDataType.dString.id
               val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
               table.put(putData)
             }
@@ -367,34 +311,36 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
       HBridge.toBytes(qualifier), value)
   }
 
-  def get(row: Any, family: Any, qualifier: Any): Option[Array[Byte]] = {
+  def get(row: Any, family: Any, qualifier: Any): Array[Byte] = {
     val result = table.get(new Get(HBridge.toBytes(row)))
-    Option(result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier)))
+    result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier))
   }
 
-  def exists(row: Any): Option[Boolean] = Option(table.exists(new Get(HBridge.toBytes(row))))
+  def exists(row: Any): Boolean = {
+    table.exists(new Get(HBridge.toBytes(row)))
+  }
 
-  def exists(row: Any, family: Any, qualifier: Any): Option[Boolean] = {
+  def exists(row: Any, family: Any, qualifier: Any): Boolean = {
     val get = new Get(HBridge.toBytes(row))
     get.addColumn(HBridge.toBytes(family), HBridge.toBytes(qualifier))
-    Option(table.exists(get))
+    table.exists(get)
   }
 
   def getDateString(row: Any, family: Any, qualifier: Any): Option[String] = {
-    val milliSeconds: Long = Bytes.toLong(get(row, family, qualifier).get)
+    val milliSeconds: Long = Bytes.toLong(get(row, family, qualifier))
     val zoneUTC = DateTimeZone.UTC
     val dateTime = new DateTime(milliSeconds, zoneUTC)
     Option(dateTime.toString)
   }
 
   def getLong(row: Any, family: Any, qualifier: Any): Option[Long] =
-    Option(Bytes.toLong(get(row, family, qualifier).get))
+    Option(Bytes.toLong(get(row, family, qualifier)))
 
   def getDouble(row: Any, family: Any, qualifier: Any): Option[Double] =
-    Option(Bytes.toDouble(get(row, family, qualifier).get))
+    Option(Bytes.toDouble(get(row, family, qualifier)))
 
   def getString(row: Any, family: Any, qualifier: Any): Option[String] =
-    Option(Bytes.toString(get(row, family, qualifier).get))
+    Option(Bytes.toString(get(row, family, qualifier)))
 
   def get(row: Any,
     func: (Array[Byte], Array[Byte], Array[Byte]) => Unit) {
@@ -539,10 +485,10 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
     try {
 
       Option(
-      for (
-        item <- rs;
-        keyvalue <- item.raw()
-      ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), Bytes.toLong(keyvalue.getValue)))
+        for (
+          item <- rs;
+          keyvalue <- item.raw()
+        ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), Bytes.toLong(keyvalue.getValue)))
 
     } finally {
       rs.close()
@@ -550,24 +496,22 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
   }
 
   def getValueByType(valueType: String, valueRaw: Array[Byte]): Any = {
-    import DataType._
-    val typeBit: DataType = DataType(valueType.split(":").reverse.head.toInt)
-
+    val typeBit = HDataType(valueType.split(":").reverse.head.toInt)
     val valueResult =
       typeBit match {
-        case DataType.dBoolean =>
+        case HDataType.dBoolean =>
           Bytes.toBoolean(valueRaw)
-        case DataType.dDouble =>
+        case HDataType.dDouble =>
           Bytes.toDouble(valueRaw)
-        case DataType.dFloat =>
+        case HDataType.dFloat =>
           Bytes.toFloat(valueRaw)
-        case DataType.dInt =>
+        case HDataType.dInt =>
           Bytes.toInt(valueRaw)
-        case DataType.dLong =>
+        case HDataType.dLong =>
           Bytes.toLong(valueRaw)
-        case DataType.dString =>
+        case HDataType.dString =>
           Bytes.toString(valueRaw)
-        case DataType.dTime =>
+        case HDataType.dTime =>
           val ms = Bytes.toLong(valueRaw)
           val dateTime = new DateTime(ms)
           dateTime
@@ -582,17 +526,15 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
     val rs = table.getScanner(scan)
     try {
       Option(
-      for (
-        item <- rs;
-        keyvalue <- item.raw()
-      ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), getValueByType(Bytes.toString(keyvalue.getQualifier), keyvalue.getValue)))
+        for (
+          item <- rs;
+          keyvalue <- item.raw()
+        ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), getValueByType(Bytes.toString(keyvalue.getQualifier), keyvalue.getValue)))
 
     } finally {
       rs.close()
     }
   }
-
-
 
   def scanRowWithFilterList(rowExp: String, qualifierExp: String) = {
     var filters = new java.util.ArrayList[Filter]()
@@ -692,10 +634,4 @@ class HBridge(htablePool : Option[HTablePool], tableName : String,chunkSize : In
     delete.deleteColumn(HBridge.toBytes(family), HBridge.toBytes(qualifier))
     table.delete(delete)
   }
-
-  def setAutoFlush(flushState: Boolean) = table.setAutoFlush(flushState)
-  def isAutoFlush: Boolean = table.isAutoFlush
-  def commit = table.flushCommits()
-  def returnToPool =  htablePool.get.putTable(table)
-
 }

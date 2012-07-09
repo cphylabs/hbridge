@@ -1,6 +1,8 @@
-package com.cloudphysics.test
+package com.cloudphysics.data.test
 
-import com.cloudphysics.hbridge.HBridge
+import com.cloudphysics.data.HBridge
+import com.cloudphysics.data.HBridgeConfig
+
 import org.specs._
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.HTable
@@ -34,14 +36,13 @@ class HBridgeSpec extends SpecificationWithJUnit with HBaseTestCluster {
 
     "perform standard Put Operation" in {
 
-
-      val hbridge = HBridge(hBaseTestingUtility.getConfiguration,TABLE_NAME,10,6)
+      val hbridgeConfig = HBridgeConfig(hBaseTestingUtility.getConfiguration)
+      val hbridge = HBridge(hbridgeConfig,TABLE_NAME)
       hbridge.put("machine1", "jvmheap", "min", "300")
       hbridge.put("machine1", "jvmheap", "max", "10000")
       val min = hbridge.getString("machine1", "jvmheap", "min").get
       min mustEqual "300"
       hbridge.returnToPool
-      hbridge.closeTablePool(TABLE_NAME)
     }
 
 
