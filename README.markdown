@@ -19,7 +19,7 @@ SBT based dependency setup
 ```
 // Global Repository resolver
 resolvers ++= Seq("CphyLabs-Repo" at "http://cphylabs.github.com/hbridge/repository")
-libraryDependencies ++= Seq("com.cloudphysics" % "hbridge" % "0.0.1")
+libraryDependencies ++= Seq("com.cloudphysics" % "hbridge" % "1.0.0")
 ```
 
 Clone this project and execute
@@ -40,7 +40,7 @@ This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HBrid
     <dependency>
       <groupId>com.cloudphysics</groupId>
       <artifactId>hbridge</artifactId>
-      <version>0.0.1</version>
+      <version>1.0.0</version>
     </dependency>
  </dependencies>
 ```
@@ -50,18 +50,50 @@ This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HBrid
 
 This library is composed of 2 simple abstractions :
 
-# HBridgeConfig
-  * This class is a clean abstraction of hbase-site.xml.
-  * All properties pertaining to HBase client access can be composed in a externalized YAML properties file and loaded during client startup
+# HBridgeConfig 
+	* This class is a clean abstraction of Hadoop Configuration class (including and not limited to ZKQuorum, ZKPort, HMaster , etc )
+	* All properties pertaining to HBase client access can be composed in a externalized YAML properties file and loaded during client startup
     Example :
+		val zkQuorum = config.getString("hbaseZookeeperQuorum").get
+		val zkClientPort = config.getString("hbaseZookeeperClientPort").get
+		val hbaseWriteBuffer = config.getString("hbaseWriteBufferSize").get
+		val hbaseMaster = config.getString("hbaseMaster").get
+		val hbridgeConfig = HBridgeConfig(zkQuorum, zkClientPort, hbaseWriteBuffer, hbaseMaster)
+	
+# HBridge
+  	* This class is a clean abstraction over HTable (both in DDL and DML perspective)
+	* After successfully acquiring HBridgeConfig
+	
+		def withHbase(hbridgeConfig: HBridgeConfig,
+			rowKey: String,
+			tableName: String,
+			cfName: String,
+			cqName: String,
+			cqinventoryPoolSize: Int,
+			chunkSize: Int)(f: (HBridge, String, String, String) => Unit) {
+				val hbridge = HBridge(hbridgeConfig, tableName)
+				hbridge.setAutoFlush(false)
+				try {
+				f(hbridge, rowKey, cfName, cqName)
+				} finally {
+				hbridge.commit
+				hbridge.returnToPool
+				log.info("Returned to Pool")
+				-- optionally tear down when done (Preferably don't close the pool in web application server that run in
+				-- continuous mode 
+				hbridge.closeTablePool(tableName)
+				}
+		}
 
-    val hConfig = HBridgeConfig("hbaseZookeeperQuorum","hbaseZookeeperClientPort","hbaseWriteBufferSize","hbaseMaster","tableName","cFamily")
-    example : val x = HBaseConfig("aws.ec2.asas...","2181","20971520","aws.ec2.asas..:60000","tableName","cF")
-
- HBridge
+		--- Now use this function as illustrated below 
+		withHbase(hbridgeConfig, rowKey, historyTableName, historyCF, fileQualifier, inventoryPoolSize, chunkSize) {
+			(hbridge, rowKey, cf, cq) =>
+			hbridge.put(rowKey, cf, cq, value)
+			hbridge.scanRow ....
+		}
 
 
 # License
   -------
 
-  Published under The MIT License, see LICENSE
+  Published under The MIT License
