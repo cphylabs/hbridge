@@ -76,7 +76,7 @@ This library is composed of 2 simple abstractions :
 				try {
 				f(hbridge, rowKey, cfName, cqName)
 				} finally {
-				hbridge.commit
+				hbridge.commit // Add a COMMIT only for write operations and NOT for READ (FETCH) operations
 				hbridge.returnToPool
 				log.info("Returned to Pool")
 				-- optionally tear down when done (Preferably don't close the pool in web application server that run in
