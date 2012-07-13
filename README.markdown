@@ -19,7 +19,7 @@ SBT based dependency setup
 ```
 // Global Repository resolver
 resolvers ++= Seq("CphyLabs-Repo" at "http://cphylabs.github.com/hbridge/repository")
-libraryDependencies ++= Seq("com.cloudphysics" % "hbridge" % "1.0.0")
+libraryDependencies ++= Seq("com.cloudphysics" % "hbridge" % "1.1.0")
 ```
 
 Clone this project and execute
@@ -40,7 +40,7 @@ This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HBrid
     <dependency>
       <groupId>com.cloudphysics</groupId>
       <artifactId>hbridge</artifactId>
-      <version>1.0.0</version>
+      <version>1.1.0</version>
     </dependency>
  </dependencies>
 ```

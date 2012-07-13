@@ -9,7 +9,6 @@ import org.joda.time.format.ISODateTimeFormat
 import org.apache.hadoop.hbase.{ HBaseConfiguration, HTableDescriptor, HColumnDescriptor }
 import org.apache.hadoop.hbase.filter._
 import grizzled.slf4j.Logging
-import HDataType._
 
 object Benchmark extends Logging {
   def time(description: String)(f: => Unit) = {
@@ -29,7 +28,7 @@ object Benchmark extends Logging {
 
 object HBridge extends Logging {
 
-  private def CHUNK_SIZE = 5
+  private def CHUNK_SIZE = 3
 
   def apply(hbridgeConfig: HBridgeConfig, tableName: String) = {
     new HBridge(hbridgeConfig.htablePool, tableName)
@@ -196,7 +195,7 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   def setAutoFlush(flushState: Boolean) = table.setAutoFlush(flushState)
   def isAutoFlush: Boolean = table.isAutoFlush
   def commit = table.flushCommits()
-  def returnToPool = htablePool.get.close()
+  def returnToPool = table.close();
   /*
   Regex Variables to type Inference based on Value in a Typed Map with values normalized to Strings a.k.a Map[String,String]
   */
@@ -213,37 +212,36 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   val GuidValue = """[\w]+-[\w]+-[\w]+-[\w]+-[\w]+""".r
 
   def putBuffering(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
-
     var putList = new java.util.ArrayList[Put]()
     dataMap foreach {
       case (columnKey, value) =>
         value match {
           case DigitValue() =>
-            val columnKeyWithType = columnKey + ":" + HDataType.dLong.id
+            val columnKeyWithType = columnKey + ":" + DataType.dLong.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
             putList.add(putData)
           case DateTime(d, t) =>
             val dateTime = new DateTime(value)
             val millSeconds: Long = dateTime.getMillis
-            val columnKeyWithType = columnKey + ":" + HDataType.dTime.id
+            val columnKeyWithType = columnKey + ":" + DataType.dTime.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, millSeconds)
             putList.add(putData)
           case BooleanValue() =>
-            val columnKeyWithType = columnKey + ":" + HDataType.dBoolean.id
+            val columnKeyWithType = columnKey + ":" + DataType.dBoolean.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toBoolean)
             putList.add(putData)
           case "null" | EmptyValue() | "" =>
             None
           case StringValue() | AlphaNumValue() | GuidValue() | _ =>
             if (value != "") {
-              val columnKeyWithType = columnKey + ":" + HDataType.dString.id
+              val columnKeyWithType = columnKey + ":" + DataType.dString.id
               val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
               putList.add(putData)
             }
         }
     }
     val size = putList.size
-    //val putLists = if (size > HBridge.CHUNK_SIZE) putList.grouped(size / HBridge.CHUNK_SIZE).toList else 
+    //val putLists = if (size > HBridge.CHUNK_SIZE) putList.grouped(size / HBridge.CHUNK_SIZE).toList else
     val putLists = putList.grouped(HBridge.CHUNK_SIZE).toList
 
     putLists foreach { list => table.put(list) }
@@ -254,24 +252,24 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
       case (columnKey, value) =>
         value match {
           case DigitValue() =>
-            val columnKeyWithType = columnKey + ":" + HDataType.dLong.id
+            val columnKeyWithType = columnKey + ":" + DataType.dLong.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
             table.put(putData)
           case DateTime(d, t) =>
             val dateTime = new DateTime(value)
             val millSeconds: Long = dateTime.getMillis
-            val columnKeyWithType = columnKey + ":" + HDataType.dTime.id
+            val columnKeyWithType = columnKey + ":" + DataType.dTime.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, millSeconds)
             table.put(putData)
           case BooleanValue() =>
-            val columnKeyWithType = columnKey + ":" + HDataType.dBoolean.id
+            val columnKeyWithType = columnKey + ":" + DataType.dBoolean.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toBoolean)
             table.put(putData)
           case "null" | EmptyValue() | "" =>
             None
           case StringValue() | AlphaNumValue() | GuidValue() | _ =>
             if (value != "") {
-              val columnKeyWithType = columnKey + ":" + HDataType.dString.id
+              val columnKeyWithType = columnKey + ":" + DataType.dString.id
               val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
               table.put(putData)
             }
@@ -496,22 +494,23 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   }
 
   def getValueByType(valueType: String, valueRaw: Array[Byte]): Any = {
-    val typeBit = HDataType(valueType.split(":").reverse.head.toInt)
+    import DataType._
+    val typeBit: DataType = DataType(valueType.split(":").reverse.head.toInt)
     val valueResult =
       typeBit match {
-        case HDataType.dBoolean =>
+        case DataType.dBoolean =>
           Bytes.toBoolean(valueRaw)
-        case HDataType.dDouble =>
+        case DataType.dDouble =>
           Bytes.toDouble(valueRaw)
-        case HDataType.dFloat =>
+        case DataType.dFloat =>
           Bytes.toFloat(valueRaw)
-        case HDataType.dInt =>
+        case DataType.dInt =>
           Bytes.toInt(valueRaw)
-        case HDataType.dLong =>
+        case DataType.dLong =>
           Bytes.toLong(valueRaw)
-        case HDataType.dString =>
+        case DataType.dString =>
           Bytes.toString(valueRaw)
-        case HDataType.dTime =>
+        case DataType.dTime =>
           val ms = Bytes.toLong(valueRaw)
           val dateTime = new DateTime(ms)
           dateTime
