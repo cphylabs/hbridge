@@ -9,6 +9,7 @@ import org.joda.time.format.ISODateTimeFormat
 import org.apache.hadoop.hbase.{ HBaseConfiguration, HTableDescriptor, HColumnDescriptor }
 import org.apache.hadoop.hbase.filter._
 import grizzled.slf4j.Logging
+import org.apache.hadoop.hbase.KeyValue
 
 object Benchmark extends Logging {
   def time(description: String)(f: => Unit) = {
@@ -199,8 +200,11 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   /*
   Regex Variables to type Inference based on Value in a Typed Map with values normalized to Strings a.k.a Map[String,String]
   */
+  val TIMESTAMP = "timeStamp"
   val parser = ISODateTimeFormat.dateTime()
-  val DigitValue = """-?\d+""".r
+  //val DigitValue = """-?\d+""".r -- Triage
+  val DigitValue = """-?[1-9][0-9]*""".r
+  val DoubleValue = """-?[1-9]*[.]{1}[0-9]*""".r
   val StringValue = """\w+-?\w+""".r
   val AlphaNumValue = """[A-Za-z0-9\s?-?,;_\./\[\]]+""".r
   val BooleanValue = """[Tt]rue|[Ff]alse""".r
@@ -210,15 +214,36 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   val NullValue = """[Nn]ull""".r
   val EmptyValue = """\[\]""".r
   val GuidValue = """[\w]+-[\w]+-[\w]+-[\w]+-[\w]+""".r
+  val ipPattern = """\.""".r
 
   def putBuffering(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
-    var putList = new java.util.ArrayList[Put]()
+    val putList = new java.util.ArrayList[Put]()
+    val putData = putCache(rowKey, columnFamily, TIMESTAMP, timeStamp, timeStamp)
+    putList.add(putData)
     dataMap foreach {
       case (columnKey, value) =>
         value match {
+          case DoubleValue() =>
+            val ipValue = ipPattern findAllIn value
+            val putData =
+              if (ipValue.size > 1) {
+                val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
+              } else {
+                val columnKeyWithType = columnKey + ":" + DataType.dDouble.id
+                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toDouble)
+              }
+            putList.add(putData)
           case DigitValue() =>
-            val columnKeyWithType = columnKey + ":" + DataType.dLong.id
-            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
+            val ipValue = ipPattern findAllIn value
+            val putData =
+              if (ipValue.size > 1) {
+                val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
+              } else {
+                val columnKeyWithType = columnKey + ":" + DataType.dLong.id
+                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
+              }
             putList.add(putData)
           case DateTime(d, t) =>
             val dateTime = new DateTime(value)
@@ -241,19 +266,24 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
         }
     }
     val size = putList.size
-    //val putLists = if (size > HBridge.CHUNK_SIZE) putList.grouped(size / HBridge.CHUNK_SIZE).toList else
     val putLists = putList.grouped(HBridge.CHUNK_SIZE).toList
 
     putLists foreach { list => table.put(list) }
   }
 
   def putDataMap(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
+    val putData = putCache(rowKey, columnFamily, TIMESTAMP, timeStamp, timeStamp)
+    table.put(putData)
     dataMap foreach {
       case (columnKey, value) =>
         value match {
           case DigitValue() =>
             val columnKeyWithType = columnKey + ":" + DataType.dLong.id
             val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
+            table.put(putData)
+          case DoubleValue() =>
+            val columnKeyWithType = columnKey + ":" + DataType.dDouble.id
+            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toDouble)
             table.put(putData)
           case DateTime(d, t) =>
             val dateTime = new DateTime(value)
@@ -309,11 +339,6 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
       HBridge.toBytes(qualifier), value)
   }
 
-  def get(row: Any, family: Any, qualifier: Any): Array[Byte] = {
-    val result = table.get(new Get(HBridge.toBytes(row)))
-    result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier))
-  }
-
   def exists(row: Any): Boolean = {
     table.exists(new Get(HBridge.toBytes(row)))
   }
@@ -324,26 +349,83 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
     table.exists(get)
   }
 
-  def getDateString(row: Any, family: Any, qualifier: Any): Option[String] = {
-    val milliSeconds: Long = Bytes.toLong(get(row, family, qualifier))
-    val zoneUTC = DateTimeZone.UTC
-    val dateTime = new DateTime(milliSeconds, zoneUTC)
-    Option(dateTime.toString)
+  def getDetails(row: Any, family: Any, qualifier: Any) {
+    val result = table.get(new Get(HBridge.toBytes(row)))
+    val kvs: java.util.List[KeyValue] = result.list()
+    val dataSet = kvs.filter(kv => Bytes.toString(kv.getQualifier).equals(qualifier) && Bytes.toString(kv.getFamily).equals(family))
+    dataSet foreach { kv => logger.info(" TimeStamp Value for Qualifier " + qualifier + " is " + dateLongtoString(kv.getTimestamp)) }
   }
 
-  def getLong(row: Any, family: Any, qualifier: Any): Option[Long] =
-    Option(Bytes.toLong(get(row, family, qualifier)))
+  def get(row: Any, family: Any, qualifier: Any): Array[Byte] = {
+    val result = table.get(new Get(HBridge.toBytes(row)))
+    result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier))
+  }
 
-  def getDouble(row: Any, family: Any, qualifier: Any): Option[Double] =
-    Option(Bytes.toDouble(get(row, family, qualifier)))
-
-  def getString(row: Any, family: Any, qualifier: Any): Option[String] =
-    Option(Bytes.toString(get(row, family, qualifier)))
+  def getWithTs(row: Any, family: Any, qualifier: Any): Option[(Array[Byte], Long)] = {
+    val get = new Get(HBridge.toBytes(row))
+    get.addColumn(HBridge.toBytes(family), HBridge.toBytes(qualifier))
+    val result = table.get(get)
+    val kv = Option(result.getColumnLatest(HBridge.toBytes(family), HBridge.toBytes(qualifier)))
+    kv map {
+      keyValue => (keyValue.getValue, keyValue.getTimestamp)
+    }
+  }
 
   def get(row: Any,
     func: (Array[Byte], Array[Byte], Array[Byte]) => Unit) {
     for (kv <- table.get(new Get(HBridge.toBytes(row))).raw) {
       func(kv.getFamily, kv.getQualifier, kv.getValue)
+    }
+  }
+
+  def dateLongtoString(millis: Long): String = {
+    val zoneUTC = DateTimeZone.UTC
+    (new DateTime(millis, zoneUTC)).toString
+  }
+
+  def getDateString(row: Any, family: Any, qualifier: Any): Option[String] = {
+    val result = get(row, family, qualifier)
+    Option(result) map {
+      valueData => dateLongtoString(Bytes.toLong(valueData))
+    }
+  }
+
+  def getDateStringwithTs(row: Any, family: Any, qualifier: Any): Option[(String, Long)] = {
+    getWithTs(row, family, qualifier) map {
+      t => (dateLongtoString(Bytes.toLong(t._1)), t._2)
+    }
+  }
+
+  def getLong(row: Any, family: Any, qualifier: Any): Option[Long] = {
+    val result = get(row, family, qualifier)
+    Option(result) map { valueData => Bytes.toLong(valueData) }
+  }
+
+  def getLongWithTs(row: Any, family: Any, qualifier: Any): Option[(Long, Long)] = {
+    getWithTs(row, family, qualifier) map {
+      t => (Bytes.toLong(t._1), t._2)
+    }
+  }
+
+  def getDouble(row: Any, family: Any, qualifier: Any): Option[Double] = {
+    val result = get(row, family, qualifier)
+    Option(result) map { valueData => Bytes.toDouble(valueData) }
+  }
+
+  def getDoubleWithTs(row: Any, family: Any, qualifier: Any): Option[(Double, Long)] = {
+    getWithTs(row, family, qualifier) map {
+      t => (Bytes.toDouble(t._1), t._2)
+    }
+  }
+
+  def getString(row: Any, family: Any, qualifier: Any): Option[String] = {
+    val result = get(row, family, qualifier)
+    Option(result) map { valueData => Bytes.toString(valueData) }
+  }
+
+  def getStringWithTs(row: Any, family: Any, qualifier: Any): Option[(String, Long)] = {
+    getWithTs(row, family, qualifier) map {
+      t => (Bytes.toString(t._1), t._2)
     }
   }
 
@@ -379,12 +461,12 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   }
 
   def scan(startRow: Any, endRow: Any,
-    func: (Array[Byte], Array[Byte], Array[Byte], Array[Byte]) => Unit) {
+    func: (Array[Byte], Array[Byte], Array[Byte], Long, Array[Byte]) => Unit) {
     val rs = table.getScanner(new Scan(HBridge.toBytes(startRow), HBridge.toBytes(endRow)))
     try {
       for (item <- rs) {
         for (kv <- item.raw) {
-          func(item.getRow, kv.getFamily, kv.getQualifier, kv.getValue)
+          func(item.getRow, kv.getFamily, kv.getQualifier, kv.getTimestamp, kv.getValue)
         }
       }
     } finally {
@@ -393,68 +475,67 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   }
 
   def scan(startRow: Any,
-    func: (Array[Byte], Array[Byte], Array[Byte], Array[Byte]) => Unit) {
+    func: (Array[Byte], Array[Byte], Array[Byte], Long, Array[Byte]) => Unit) {
     scan(startRow, stepNextBytes(HBridge.toBytes(startRow)), func)
   }
 
   def scanBytes(startRow: Any, endRow: Any,
-    func: (String, String, String, Array[Byte]) => Unit) {
+    func: (String, String, String, Long, Array[Byte]) => Unit) {
     scan(startRow, endRow, (row: Array[Byte], family: Array[Byte],
-      qualifier: Array[Byte], value: Array[Byte]) => {
+      qualifier: Array[Byte], timeStamp: Long, value: Array[Byte]) => {
       func(Bytes.toString(row), Bytes.toString(family),
-        Bytes.toString(qualifier), value)
+        Bytes.toString(qualifier), timeStamp, value)
     })
   }
 
   def scanBytes(startRow: Any,
-    func: (String, String, String, Array[Byte]) => Unit) {
+    func: (String, String, String, Long, Array[Byte]) => Unit) {
     scanBytes(startRow, stepNextBytes(HBridge.toBytes(startRow)), func)
   }
 
   def scanString(startRow: Any, endRow: Any,
-    func: (String, String, String, String) => Unit) {
+    func: (String, String, String, Long, String) => Unit) {
     scan(startRow, endRow, (row: Array[Byte], family: Array[Byte],
-      qualifier: Array[Byte], value: Array[Byte]) => {
+      qualifier: Array[Byte], timeStamp: Long, value: Array[Byte]) => {
       func(Bytes.toString(row), Bytes.toString(family),
-        Bytes.toString(qualifier), Bytes.toString(value))
+        Bytes.toString(qualifier), timeStamp, Bytes.toString(value))
     })
   }
 
   def scanString(startRow: Any,
-    func: (String, String, String, String) => Unit) {
+    func: (String, String, String, Long, String) => Unit) {
     scanString(startRow, stepNextBytes(HBridge.toBytes(startRow)), func)
   }
 
   def scanLong(startRow: Any, endRow: Any,
-    func: (String, String, String, Long) => Unit) {
+    func: (String, String, String, Long, Long) => Unit) {
     scan(startRow, endRow, (row: Array[Byte], family: Array[Byte],
-      qualifier: Array[Byte], value: Array[Byte]) => {
+      qualifier: Array[Byte], timeStamp: Long, value: Array[Byte]) => {
       func(Bytes.toString(row), Bytes.toString(family),
-        Bytes.toString(qualifier), Bytes.toLong(value))
+        Bytes.toString(qualifier), timeStamp, Bytes.toLong(value))
     })
   }
 
   def scanLong(startRow: Any,
-    func: (String, String, String, Long) => Unit) {
+    func: (String, String, String, Long, Long) => Unit) {
     scanLong(startRow, stepNextBytes(HBridge.toBytes(startRow)), func)
   }
 
   def scanDouble(startRow: Any, endRow: Any,
-    func: (String, String, String, Double) => Unit) {
+    func: (String, String, String, Long, Double) => Unit) {
     scan(startRow, endRow, (row: Array[Byte], family: Array[Byte],
-      qualifier: Array[Byte], value: Array[Byte]) => {
+      qualifier: Array[Byte], timeStamp: Long, value: Array[Byte]) => {
       func(Bytes.toString(row), Bytes.toString(family),
-        Bytes.toString(qualifier), Bytes.toDouble(value))
+        Bytes.toString(qualifier), timeStamp, Bytes.toDouble(value))
     })
   }
 
   def scanDouble(startRow: Any,
-    func: (String, String, String, Double) => Unit) {
+    func: (String, String, String, Long, Double) => Unit) {
     scanDouble(startRow, stepNextBytes(HBridge.toBytes(startRow)), func)
   }
 
   def scanRow(startRow: Any, endRow: Any, func: (Result) => Unit) {
-    table.getScanner(new Scan(HBridge.toBytes(startRow), HBridge.toBytes(endRow)))
     val rs = table.getScanner(new Scan(HBridge.toBytes(startRow), HBridge.toBytes(endRow)))
     try {
       for (item <- rs)
@@ -528,15 +609,42 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
         for (
           item <- rs;
           keyvalue <- item.raw()
-        ) yield (Bytes.toString(keyvalue.getRow), Bytes.toString(keyvalue.getQualifier), getValueByType(Bytes.toString(keyvalue.getQualifier), keyvalue.getValue)))
+        ) yield (Bytes.toString(keyvalue.getRow),
+          Bytes.toString(keyvalue.getQualifier),
+          keyvalue.getTimestamp,
+          getValueByType(Bytes.toString(keyvalue.getQualifier),
+            keyvalue.getValue)))
 
     } finally {
       rs.close()
     }
   }
 
-  def scanRowWithFilterList(rowExp: String, qualifierExp: String) = {
-    var filters = new java.util.ArrayList[Filter]()
+  def scanRowColumnWithFilter(startRow: String, endRow: String, filter: org.apache.hadoop.hbase.filter.Filter) = {
+    val scan = new Scan()
+    scan.setStartRow(Bytes.toBytes(startRow))
+    scan.setStopRow(Bytes.toBytes(endRow))
+
+    scan.setFilter(filter)
+    val rs = table.getScanner(scan)
+    try {
+      Option(
+        for (
+          item <- rs;
+          keyvalue <- item.raw()
+        ) yield (Bytes.toString(keyvalue.getRow),
+          Bytes.toString(keyvalue.getQualifier),
+          keyvalue.getTimestamp,
+          getValueByType(Bytes.toString(keyvalue.getQualifier),
+            keyvalue.getValue)))
+
+    } finally {
+      rs.close()
+    }
+  }
+
+  def scanRowWithFilterSet(rowExp: String, qualifierExp: String) = {
+    val filters = new java.util.ArrayList[Filter]()
     val typedQualifer = qualifierExp + ".*"
     val rowFilter = new RowFilter(CompareFilter.CompareOp.EQUAL, new RegexStringComparator(rowExp))
     filters.add(rowFilter)
@@ -544,6 +652,78 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
     filters.add(qualiferFilter)
     val filterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ALL, filters)
     scanRowWithFilter(filterList)
+  }
+
+  def scanRowWithQualifierList(rowExp: String, qualifierExp: List[String]) = {
+    val filters = new java.util.ArrayList[Filter]()
+    for (q <- qualifierExp) {
+      val filterCriteria = new QualifierFilter(CompareFilter.CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes(q)))
+      filters.add(filterCriteria)
+    }
+    val filterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, filters)
+    val uberFilters = new java.util.ArrayList[Filter]()
+    uberFilters.add(filterList)
+    val rowFilter = new RowFilter(CompareFilter.CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes(rowExp)))
+    uberFilters.add(rowFilter)
+    val finalFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ALL, uberFilters)
+    scanRowWithFilter(finalFilterList)
+  }
+
+  def scanRowListWithQualifierList(rowExp: List[String], qualifierExp: List[String]) = {
+    val qfilters = new java.util.ArrayList[Filter]()
+    for (q <- qualifierExp) {
+      val filterCriteria = new QualifierFilter(CompareFilter.CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes(q)))
+      qfilters.add(filterCriteria)
+    }
+    val qFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, qfilters)
+    val rfilters = new java.util.ArrayList[Filter]()
+    for (r <- rowExp) {
+      val rowCriteria = new RowFilter(CompareFilter.CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes(r)))
+      rfilters.add(rowCriteria)
+    }
+    val rFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, rfilters)
+    val uberFilters = new java.util.ArrayList[Filter]()
+    uberFilters.add(qFilterList)
+    uberFilters.add(rFilterList)
+    val finalFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ALL, uberFilters)
+    scanRowWithFilter(finalFilterList)
+  }
+
+  def scanRowWithQualifierListRegex(rowExp: String, qualifierExp: List[String]) = {
+    val filters = new java.util.ArrayList[Filter]()
+    val typedQualiferList = qualifierExp map (_ + ".*")
+    for (q <- typedQualiferList) {
+      val filterCriteria = new QualifierFilter(CompareFilter.CompareOp.EQUAL, new RegexStringComparator(q))
+      filters.add(filterCriteria)
+    }
+    val filterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, filters)
+    val uberFilters = new java.util.ArrayList[Filter]()
+    uberFilters.add(filterList)
+    val rowFilter = new RowFilter(CompareFilter.CompareOp.EQUAL, new RegexStringComparator(rowExp))
+    uberFilters.add(rowFilter)
+    val finalFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ALL, uberFilters)
+    scanRowWithFilter(finalFilterList)
+  }
+
+  def scanRowListWithQualifierListRegex(rowExp: List[String], qualifierExp: List[String]) = {
+    val qfilters = new java.util.ArrayList[Filter]()
+    val typedQualiferList = qualifierExp map (_ + ".*")
+    for (q <- typedQualiferList) {
+      val filterCriteria = new QualifierFilter(CompareFilter.CompareOp.EQUAL, new RegexStringComparator(q))
+      qfilters.add(filterCriteria)
+    }
+    val qFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, qfilters)
+    val rfilters = new java.util.ArrayList[Filter]()
+    for (r <- rowExp) {
+      val rowCriteria = new RowFilter(CompareFilter.CompareOp.EQUAL, new RegexStringComparator(r))
+      rfilters.add(rowCriteria)
+    }
+    val rFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, rfilters)
+    val uberFilters = new java.util.ArrayList[Filter]()
+    uberFilters.add(qFilterList)
+    uberFilters.add(rFilterList)
+    val finalFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ALL, uberFilters)
+    scanRowWithFilter(finalFilterList)
   }
 
   def scanRowKeyWithRegExCompareFilter(rowExp: String) = {
@@ -612,7 +792,7 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   }
 
   private def stepNextBytes(bytes: Array[Byte]): Array[Byte] = {
-    var nextBytes = new Array[Byte](bytes.length)
+    val nextBytes = new Array[Byte](bytes.length)
     nextBytes(nextBytes.length - 1) = (nextBytes(nextBytes.length - 1) + 1).toByte
     nextBytes
   }
