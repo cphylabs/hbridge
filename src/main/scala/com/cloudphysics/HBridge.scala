@@ -1,4 +1,4 @@
-package com.cloudphysics.data
+package utils
 
 import scala.collection.JavaConversions._
 import org.apache.hadoop.conf.Configuration
@@ -162,7 +162,7 @@ object HBridge extends Logging {
     }
   }
 
-  def withHbasePutCollection(hbridge: HBridge, rowKey: String, family: String, dataMap: List[(String, String)], timeStamp: Long)(f: (HBridge, String, String, List[(String, String)], Long) => Unit) {
+  def withHbasePutCollection(hbridge: HBridge, rowKey: String, family: String, dataMap: List[(String, Any)], timeStamp: Long)(f: (HBridge, String, String, List[(String, Any)], Long) => Unit) {
     hbridge.setAutoFlush(false)
     try {
       f(hbridge, rowKey, family, dataMap, timeStamp)
@@ -172,15 +172,31 @@ object HBridge extends Logging {
     }
   }
 
-  def batchInsertIntoHbase(hbridge: HBridge)(rowKey: String, family: String, timeStamp: Long, dataMap: List[(String, String)]) {
+  def withHbasePutCollectionRegex(hbridge: HBridge, rowKey: String, family: String, dataMap: List[(String, String)], timeStamp: Long)(f: (HBridge, String, String, List[(String, String)], Long) => Unit) {
+    hbridge.setAutoFlush(false)
+    try {
+      f(hbridge, rowKey, family, dataMap, timeStamp)
+    } finally {
+      hbridge.commit
+      hbridge.returnToPool
+    }
+  }
+
+  def batchInsertIntoHbase(hbridge: HBridge)(rowKey: String, family: String, timeStamp: Long, dataMap: List[(String, Any)]) {
     withHbasePutCollection(hbridge, rowKey, family, dataMap, timeStamp) {
+      (hbridge, rowKey, columnFamily, dataMap, timeStamp) =>
+        hbridge.putBufferingWithType(rowKey, columnFamily, dataMap, timeStamp)
+    }
+  }
+
+  def batchInsertIntoHbaseRegex(hbridge: HBridge)(rowKey: String, family: String, timeStamp: Long, dataMap: List[(String, String)]) {
+    withHbasePutCollectionRegex(hbridge, rowKey, family, dataMap, timeStamp) {
       (hbridge, rowKey, columnFamily, dataMap, timeStamp) =>
         hbridge.putBuffering(rowKey, columnFamily, dataMap, timeStamp)
     }
-
   }
 
-  def insertIntoHbase(hbridge: HBridge)(rowKey: String, family: String, timeStamp: Long, dataMap: List[(String, String)]) {
+  def insertIntoHbase(hbridge: HBridge)(rowKey: String, family: String, timeStamp: Long, dataMap: List[(String, Any)]) {
     withHbasePutCollection(hbridge, rowKey, family, dataMap, timeStamp) {
       (hbridge, rowKey, columnFamily, dataMap, timeStamp) =>
         hbridge.putDataMap(rowKey, columnFamily, dataMap, timeStamp)
@@ -192,7 +208,8 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
 
   val table: HTable = htablePool.get.getTable(tableName).asInstanceOf[HTable]
   def closeTablePool(tableName: String) = if (!htablePool.eq(None)) htablePool.get.closeTablePool(tableName)
-  def putTable = htablePool.get.putTable(table)
+  //def putTable = htablePool.get.putTable(table)
+  def putTable = table.close
   def setAutoFlush(flushState: Boolean) = table.setAutoFlush(flushState)
   def isAutoFlush: Boolean = table.isAutoFlush
   def commit = table.flushCommits()
@@ -203,8 +220,8 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   val TIMESTAMP = "timeStamp"
   val parser = ISODateTimeFormat.dateTime()
   //val DigitValue = """-?\d+""".r -- Triage
-  val DigitValue = """-?[1-9][0-9]*""".r
-  val DoubleValue = """-?[1-9]*[.]{1}[0-9]*""".r
+  val DigitValue = """-?[0-9][0-9]*""".r
+  val DoubleValue = """-?[0-9]*[.]{1}[0-9]*""".r
   val StringValue = """\w+-?\w+""".r
   val AlphaNumValue = """[A-Za-z0-9\s?-?,;_\./\[\]]+""".r
   val BooleanValue = """[Tt]rue|[Ff]alse""".r
@@ -214,9 +231,131 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   val NullValue = """[Nn]ull""".r
   val EmptyValue = """\[\]""".r
   val GuidValue = """[\w]+-[\w]+-[\w]+-[\w]+-[\w]+""".r
-  val ipPattern = """\.""".r
+
+  
+  
+  def putBufferingWithTypeDebug(rowKey: String, columnFamily: String, dataMap: List[(String, Any)], timeStamp: Long) {
+    import java.lang.NumberFormatException
+    val putList = new java.util.ArrayList[Put]()
+    val putData = putCache(rowKey, columnFamily, TIMESTAMP, timeStamp, timeStamp)
+    putList.add(putData)
+    dataMap foreach {
+      case (columnKey, value) =>
+        value match {
+          case l: Long =>
+            val putData =
+              try {
+                val columnKeyWithType = columnKey + ":" + DataType.dLong.id
+                logger.info("LONG: RowKey " + rowKey + " , ColumnFamily : " + columnFamily + " , ColumnKeyWithType : " + " , TimeStamp " +  columnKeyWithType + " , Value " + l)
+                
+              } catch {
+                case e: NumberFormatException => {
+                  val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                  logger.info("LONG(as String): RowKey " + rowKey + " , ColumnFamily : " + columnFamily + " , ColumnKeyWithType : " + " , TimeStamp " +  columnKeyWithType + " , Value " + value.toString)
+                }
+              }
+          case d: Double =>
+            val putData =
+              try {
+                val columnKeyWithType = columnKey + ":" + DataType.dDouble.id
+                logger.info("DOUBLE: RowKey " + rowKey + " , ColumnFamily : " + columnFamily + " , ColumnKeyWithType : " + " , TimeStamp " +  columnKeyWithType + " , Value " + d)
+                
+              } catch {
+                case e: NumberFormatException => {
+                  val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                  logger.info("DOUBLE(as String): RowKey " + rowKey + " , ColumnFamily : " + columnFamily + " , ColumnKeyWithType : " + " , TimeStamp " +  columnKeyWithType + " , Value " + value.toString)
+                }
+              }
+          case i: Int =>
+            val putData =
+              try {
+                val columnKeyWithType = columnKey + ":" + DataType.dLong.id
+                logger.info("INTEGER: RowKey " + rowKey + " , ColumnFamily : " + columnFamily + " , ColumnKeyWithType : " + " , TimeStamp " +  columnKeyWithType + " , Value " + i)
+                
+              } catch {
+                case e: NumberFormatException => {
+                  val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                  logger.info("INTEGER(as String): RowKey " + rowKey + " , ColumnFamily : " + columnFamily + " , ColumnKeyWithType : " + " , TimeStamp " +  columnKeyWithType + " , Value " + value.toString)
+                }
+              }
+          case b: Boolean =>
+            val columnKeyWithType = columnKey + ":" + DataType.dBoolean.id
+            logger.info("BOOLEAN: RowKey " + rowKey + " , ColumnFamily : " + columnFamily + " , ColumnKeyWithType : " + " , TimeStamp " +  columnKeyWithType + " , Value " + b)
+          case s: String =>
+            if (value != "" && value != null && value != "null" && value != "[]") {
+              val columnKeyWithType = columnKey + ":" + DataType.dString.id
+             logger.info("STRING: RowKey " + rowKey + " , ColumnFamily : " + columnFamily + " , ColumnKeyWithType : " + " , TimeStamp " +  columnKeyWithType + " , Value " + value.toString)
+            }
+        }
+    }
+    val size = putList.size
+  }
+  
+  
+  def putBufferingWithType(rowKey: String, columnFamily: String, dataMap: List[(String, Any)], timeStamp: Long) {
+    import java.lang.NumberFormatException
+    val putList = new java.util.ArrayList[Put]()
+    val putData = putCache(rowKey, columnFamily, TIMESTAMP, timeStamp, timeStamp)
+    putList.add(putData)
+    dataMap foreach {
+      case (columnKey, value) =>
+        value match {
+          case l: Long =>
+            val putData =
+              try {
+                val columnKeyWithType = columnKey + ":" + DataType.dLong.id
+                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, l)
+              } catch {
+                case e: NumberFormatException => {
+                  val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                  putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
+                }
+              }
+            putList.add(putData)
+          case d: Double =>
+            val putData =
+              try {
+                val columnKeyWithType = columnKey + ":" + DataType.dDouble.id
+                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, d)
+              } catch {
+                case e: NumberFormatException => {
+                  val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                  putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
+                }
+              }
+            putList.add(putData)
+          case i: Int =>
+            val putData =
+              try {
+                val columnKeyWithType = columnKey + ":" + DataType.dLong.id
+                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, i)
+              } catch {
+                case e: NumberFormatException => {
+                  val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                  putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
+                }
+              }
+            putList.add(putData)
+          case b: Boolean =>
+            val columnKeyWithType = columnKey + ":" + DataType.dBoolean.id
+            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, b)
+            putList.add(putData)
+          case s: String =>
+            if (value != "" && value != null && value != "null" && value != "[]") {
+              val columnKeyWithType = columnKey + ":" + DataType.dString.id
+              val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, s)
+              putList.add(putData)
+            }
+        }
+    }
+    val size = putList.size
+    val putLists = putList.grouped(HBridge.CHUNK_SIZE).toList
+
+    putLists foreach { list => table.put(list) }
+  }
 
   def putBuffering(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
+    import java.lang.NumberFormatException
     val putList = new java.util.ArrayList[Put]()
     val putData = putCache(rowKey, columnFamily, TIMESTAMP, timeStamp, timeStamp)
     putList.add(putData)
@@ -224,25 +363,27 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
       case (columnKey, value) =>
         value match {
           case DoubleValue() =>
-            val ipValue = ipPattern findAllIn value
             val putData =
-              if (ipValue.size > 1) {
-                val columnKeyWithType = columnKey + ":" + DataType.dString.id
-                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
-              } else {
+              try {
                 val columnKeyWithType = columnKey + ":" + DataType.dDouble.id
                 putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toDouble)
+              } catch {
+                case e: NumberFormatException => {
+                  val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                  putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
+                }
               }
             putList.add(putData)
           case DigitValue() =>
-            val ipValue = ipPattern findAllIn value
             val putData =
-              if (ipValue.size > 1) {
-                val columnKeyWithType = columnKey + ":" + DataType.dString.id
-                putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
-              } else {
+              try {
                 val columnKeyWithType = columnKey + ":" + DataType.dLong.id
                 putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
+              } catch {
+                case e: NumberFormatException => {
+                  val columnKeyWithType = columnKey + ":" + DataType.dString.id
+                  putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
+                }
               }
             putList.add(putData)
           case DateTime(d, t) =>
@@ -271,36 +412,28 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
     putLists foreach { list => table.put(list) }
   }
 
-  def putDataMap(rowKey: String, columnFamily: String, dataMap: List[(String, String)], timeStamp: Long) {
+  def putDataMap(rowKey: String, columnFamily: String, dataMap: List[(String, Any)], timeStamp: Long) {
     val putData = putCache(rowKey, columnFamily, TIMESTAMP, timeStamp, timeStamp)
     table.put(putData)
     dataMap foreach {
       case (columnKey, value) =>
         value match {
-          case DigitValue() =>
+          case i: Int =>
             val columnKeyWithType = columnKey + ":" + DataType.dLong.id
-            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toLong)
+            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, i)
             table.put(putData)
-          case DoubleValue() =>
+          case d: Double =>
             val columnKeyWithType = columnKey + ":" + DataType.dDouble.id
-            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toDouble)
+            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, d)
             table.put(putData)
-          case DateTime(d, t) =>
-            val dateTime = new DateTime(value)
-            val millSeconds: Long = dateTime.getMillis
-            val columnKeyWithType = columnKey + ":" + DataType.dTime.id
-            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, millSeconds)
-            table.put(putData)
-          case BooleanValue() =>
+          case b: Boolean =>
             val columnKeyWithType = columnKey + ":" + DataType.dBoolean.id
-            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toBoolean)
+            val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, b)
             table.put(putData)
-          case "null" | EmptyValue() | "" =>
-            None
-          case StringValue() | AlphaNumValue() | GuidValue() | _ =>
+          case s: String =>
             if (value != "") {
               val columnKeyWithType = columnKey + ":" + DataType.dString.id
-              val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, value.toString)
+              val putData = putCache(rowKey, columnFamily, columnKeyWithType, timeStamp, s)
               table.put(putData)
             }
         }
