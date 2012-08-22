@@ -1,4 +1,5 @@
-package utils
+package com.cloudphysics.data
+
 import org.apache.hadoop.hbase.client.HTablePool
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.HBaseConfiguration
@@ -23,7 +24,8 @@ object HBridgeConfig {
   def setConfig(hbaseZookeeperQuorum: String,
     hbaseZookeeperClientPort: String,
     hbaseWriteBufferSize: String,
-    hbaseMaster: String, hbaseScannerCaching: String, hbaseRegLeasePeriod: String, hbaseRpcTimeout : String) = {
+    hbaseMaster: String, hbaseScannerCaching: String,
+    hbaseRegLeasePeriod: String, hbaseRpcTimeout : String, poolSize: Int = POOL_SIZE) = {
     val conf: Configuration = HBaseConfiguration.create()
     conf.clear()
     conf.set("hbase.zookeeper.quorum", hbaseZookeeperQuorum)
@@ -33,22 +35,26 @@ object HBridgeConfig {
     conf.set("hbase.client.scanner.caching", hbaseScannerCaching)
     conf.set("hbase.regionserver.lease.period", hbaseRegLeasePeriod)
     conf.set("hbase.rpc.timeout", hbaseRpcTimeout)
-    htablePool = Option(new HTablePool(conf, POOL_SIZE))
+    htablePool = Option(new HTablePool(conf, poolSize))
     new HBridgeConfig(
       Option(conf), htablePool)
   }
 
-  def apply(hbaseZookeeperQuorum: String,
-    hbaseZookeeperClientPort: String,
-    hbaseWriteBufferSize: String,
-    hbaseMaster: String, hbaseScannerCaching: String, hbaseRegLeasePeriod: String,hbaseRpcTimeout : String) = {
-    setConfig(hbaseZookeeperQuorum, hbaseZookeeperClientPort, hbaseWriteBufferSize, hbaseMaster, hbaseScannerCaching, hbaseRegLeasePeriod,hbaseRpcTimeout)
+  def apply(hbaseZookeeperQuorum: String, hbaseZookeeperClientPort: String,
+    hbaseWriteBufferSize: String, hbaseMaster: String,
+    hbaseScannerCaching: String, hbaseRegLeasePeriod: String,
+    hbaseRpcTimeout : String, poolSize: Int = POOL_SIZE) = {
+    setConfig(hbaseZookeeperQuorum, hbaseZookeeperClientPort,
+        hbaseWriteBufferSize, hbaseMaster, hbaseScannerCaching,
+        hbaseRegLeasePeriod, hbaseRpcTimeout, poolSize)
   }
 
   def apply(hbaseZookeeperQuorum: String,
     hbaseZookeeperClientPort: String,
     hbaseWriteBufferSize: String,
     hbaseMaster: String) = {
-    setConfig(hbaseZookeeperQuorum, hbaseZookeeperClientPort, hbaseWriteBufferSize, hbaseMaster, SCANNER_CACHING, LEASE_PERIOD,RPC_TIMEOUT)
+    setConfig(hbaseZookeeperQuorum, hbaseZookeeperClientPort,
+        hbaseWriteBufferSize, hbaseMaster,
+        SCANNER_CACHING, LEASE_PERIOD,RPC_TIMEOUT, POOL_SIZE)
   }
 }

@@ -1,4 +1,4 @@
-package utils
+package com.cloudphysics.data
 
 import scala.collection.JavaConversions._
 import org.apache.hadoop.conf.Configuration
@@ -236,9 +236,7 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   
   def putBufferingWithTypeDebug(rowKey: String, columnFamily: String, dataMap: List[(String, Any)], timeStamp: Long) {
     import java.lang.NumberFormatException
-    val putList = new java.util.ArrayList[Put]()
-    val putData = putCache(rowKey, columnFamily, TIMESTAMP, timeStamp, timeStamp)
-    putList.add(putData)
+   
     dataMap foreach {
       case (columnKey, value) =>
         value match {
@@ -288,7 +286,7 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
             }
         }
     }
-    val size = putList.size
+   
   }
   
   
@@ -753,6 +751,29 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
     }
   }
 
+  def scanRowWithFilterLimit(startRow: String, endRow: String,filter: org.apache.hadoop.hbase.filter.Filter) = {
+    val scan = new Scan()
+    scan.setStartRow(Bytes.toBytes(startRow))
+    scan.setStopRow(Bytes.toBytes(endRow))
+    
+    scan.setFilter(filter)
+    val rs = table.getScanner(scan)
+    try {
+      Option(
+        for (
+          item <- rs;
+          keyvalue <- item.raw()
+        ) yield (Bytes.toString(keyvalue.getRow),
+          Bytes.toString(keyvalue.getQualifier),
+          keyvalue.getTimestamp,
+          getValueByType(Bytes.toString(keyvalue.getQualifier),
+            keyvalue.getValue)))
+
+    } finally {
+      rs.close()
+    }
+  }
+  
   def scanRowColumnWithFilter(startRow: String, endRow: String, filter: org.apache.hadoop.hbase.filter.Filter) = {
     val scan = new Scan()
     scan.setStartRow(Bytes.toBytes(startRow))
@@ -802,6 +823,27 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
     scanRowWithFilter(finalFilterList)
   }
 
+  
+  def scanRowListWithQualifierList(startRow: String, endRow: String,rowExp: List[String], qualifierExp: List[String]) = {
+    val qfilters = new java.util.ArrayList[Filter]()
+    for (q <- qualifierExp) {
+      val filterCriteria = new QualifierFilter(CompareFilter.CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes(q)))
+      qfilters.add(filterCriteria)
+    }
+    val qFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, qfilters)
+    val rfilters = new java.util.ArrayList[Filter]()
+    for (r <- rowExp) {
+      val rowCriteria = new RowFilter(CompareFilter.CompareOp.EQUAL, new BinaryComparator(Bytes.toBytes(r)))
+      rfilters.add(rowCriteria)
+    }
+    val rFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, rfilters)
+    val uberFilters = new java.util.ArrayList[Filter]()
+    uberFilters.add(qFilterList)
+    uberFilters.add(rFilterList)
+    val finalFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ALL, uberFilters)
+    scanRowWithFilterLimit(startRow, endRow, finalFilterList)
+  }
+  
   def scanRowListWithQualifierList(rowExp: List[String], qualifierExp: List[String]) = {
     val qfilters = new java.util.ArrayList[Filter]()
     for (q <- qualifierExp) {
@@ -859,6 +901,27 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
     scanRowWithFilter(finalFilterList)
   }
 
+  def scanRowListWithQualifierListRegex(startRow: String, endRow: String,rowExp: List[String], qualifierExp: List[String]) = {
+    val qfilters = new java.util.ArrayList[Filter]()
+    val typedQualiferList = qualifierExp map (_ + ".*")
+    for (q <- typedQualiferList) {
+      val filterCriteria = new QualifierFilter(CompareFilter.CompareOp.EQUAL, new RegexStringComparator(q))
+      qfilters.add(filterCriteria)
+    }
+    val qFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, qfilters)
+    val rfilters = new java.util.ArrayList[Filter]()
+    for (r <- rowExp) {
+      val rowCriteria = new RowFilter(CompareFilter.CompareOp.EQUAL, new RegexStringComparator(r))
+      rfilters.add(rowCriteria)
+    }
+    val rFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ONE, rfilters)
+    val uberFilters = new java.util.ArrayList[Filter]()
+    uberFilters.add(qFilterList)
+    uberFilters.add(rFilterList)
+    val finalFilterList: FilterList = new FilterList(FilterList.Operator.MUST_PASS_ALL, uberFilters)
+    scanRowWithFilterLimit(startRow, endRow, finalFilterList)
+  }
+  
   def scanRowKeyWithRegExCompareFilter(rowExp: String) = {
     val filter = new RowFilter(CompareFilter.CompareOp.EQUAL, new RegexStringComparator(rowExp))
     scanRowWithFilter(filter)
