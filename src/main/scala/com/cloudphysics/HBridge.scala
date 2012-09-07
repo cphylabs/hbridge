@@ -40,19 +40,16 @@ object HBridge extends Logging {
   def terminateClient() { HConnectionManager.deleteAllConnections(true) }
 
   def toBytes(value: Any): Array[Byte] = {
-    if (value == null)
-      return null
-    if (value.isInstanceOf[Int])
-      return Bytes.toBytes(value.asInstanceOf[Int].toLong)
-    if (value.isInstanceOf[Long])
-      return Bytes.toBytes(value.asInstanceOf[Long])
-    if (value.isInstanceOf[Float])
-      return Bytes.toBytes(value.asInstanceOf[Float].toDouble)
-    if (value.isInstanceOf[Double])
-      return Bytes.toBytes(value.asInstanceOf[Double])
-    if (value.isInstanceOf[Boolean])
-      return Bytes.toBytes(value.asInstanceOf[Boolean])
-    return Bytes.toBytes(value.toString)
+    value match {
+      case null => null
+      case i: Int => Bytes.toBytes(i.toLong)
+      case l: Long => Bytes.toBytes(l)
+      case f: Float => Bytes.toBytes(f.toDouble)
+      case d: Double => Bytes.toBytes(d)
+      case b: Boolean => Bytes.toBytes(b)
+      case bytes: Array[Byte] => bytes
+      case _ => Bytes.toBytes(value.toString)
+    }
   }
 
   def withHadmin(configObject: HBridgeConfig, tableName: String = null)(f: (HBaseAdmin, String) => Any) {
@@ -236,7 +233,9 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   
   def putBufferingWithTypeDebug(rowKey: String, columnFamily: String, dataMap: List[(String, Any)], timeStamp: Long) {
     import java.lang.NumberFormatException
-   
+    val putList = new java.util.ArrayList[Put]()
+    val putData = putCache(rowKey, columnFamily, TIMESTAMP, timeStamp, timeStamp)
+    putList.add(putData)
     dataMap foreach {
       case (columnKey, value) =>
         value match {
@@ -286,7 +285,7 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
             }
         }
     }
-   
+    val size = putList.size
   }
   
   

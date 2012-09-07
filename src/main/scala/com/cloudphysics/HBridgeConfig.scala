@@ -21,6 +21,7 @@ object HBridgeConfig {
 
   private var htablePool: Option[HTablePool] = None
 
+
   def setConfig(hbaseZookeeperQuorum: String,
     hbaseZookeeperClientPort: String,
     hbaseWriteBufferSize: String,
