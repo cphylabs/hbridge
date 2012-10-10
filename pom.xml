@@ -4,7 +4,7 @@
 
   <groupId>com.cloudphysics</groupId>
   <artifactId>hbridge</artifactId>
-  <version>1.1.4</version>
+  <version>1.1.5</version>
   <packaging>jar</packaging>
 
   <name>HBridge</name>
@@ -36,9 +36,17 @@
             <artifactId>hbase</artifactId>
             <version>0.92.1-cdh4.0.1</version>
             <scope>compile</scope>
+            <exclusions>
+               <exclusion>
+                 <groupId>org.jruby</groupId>
+                 <artifactId>jruby-complete</artifactId>
+                </exclusion>
+                <exclusion>
+                 <groupId>org.slf4j</groupId>
+                 <artifactId>slf4j-log4j12</artifactId>
+            </exclusion>
+             </exclusions>
         </dependency>
-	
-      
        <dependency>
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
