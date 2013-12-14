@@ -1,4 +1,4 @@
-package com.cloudphysics.data
+package org.cphylabs
 
 import org.apache.hadoop.hbase.client.HTablePool
 import org.apache.hadoop.conf.Configuration
