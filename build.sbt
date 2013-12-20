@@ -1,5 +1,5 @@
 
-organization := "com.cloudphysics.hbridge"
+organization := "org.cphylabs"
 
 name := "hbridge"
 

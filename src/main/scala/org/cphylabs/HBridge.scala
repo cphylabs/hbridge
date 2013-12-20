@@ -1,4 +1,4 @@
-package com.cloudphysics.data
+package org.cphylabs
 
 import scala.collection.JavaConversions._
 import org.apache.hadoop.conf.Configuration
