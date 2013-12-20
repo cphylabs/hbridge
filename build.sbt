@@ -3,7 +3,7 @@ organization := "com.cloudphysics.hbridge"
 
 name := "hbridge"
 
-version := "1.0.0"
+version := "1.0.0-SNAPSHOT"
 
 scalaVersion := "2.10.0"
 
@@ -17,7 +17,6 @@ resolvers ++= Seq(
 		"ClouderaRcs" at "https://repository.cloudera.com/artifactory/cdh-releases-rcs",
 		"CRepos" at "https://repository.cloudera.com/artifactory/cloudera-repos/",
 		"Sonatype Scala-Tools"  at "https://oss.sonatype.org/content/groups/scala-tools/",
-		"Codahale" at "http://conikeec.github.com/jerkson/repository/",
 		"Apache HBase" at "https://repository.apache.org/content/repositories/releases",
 		"Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases",
 		"Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/snapshots/",
