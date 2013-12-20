@@ -3,7 +3,7 @@ organization := "org.cphylabs"
 
 name := "hbridge"
 
-version := "1.0.0-SNAPSHOT"
+version := "1.1.8-SNAPSHOT"
 
 scalaVersion := "2.10.0"
 

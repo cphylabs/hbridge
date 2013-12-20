@@ -487,7 +487,9 @@ class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging
   }
 
   def get(row: Any, family: Any, qualifier: Any): Array[Byte] = {
-    val result = table.get(new Get(HBridge.toBytes(row)))
+    val get = new Get(HBridge.toBytes(row))
+    get.addColumn(HBridge.toBytes(family), HBridge.toBytes(qualifier))
+    val result = table.get(get)
     result.getValue(HBridge.toBytes(family), HBridge.toBytes(qualifier))
   }
 
