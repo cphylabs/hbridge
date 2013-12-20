@@ -16,8 +16,8 @@ resolvers ++= Seq(
 		"ClouderaRepo" at "https://repository.cloudera.com/content/repositories/releases",
 		"ClouderaRcs" at "https://repository.cloudera.com/artifactory/cdh-releases-rcs",
 		"CRepos" at "https://repository.cloudera.com/artifactory/cloudera-repos/",
-		"snapshots" at "http://scala-tools.org/repo-snapshots",
-		"releases"  at "http://scala-tools.org/repo-releases",
+		"scala-snapshots" at "http://scala-tools.org/repo-snapshots",
+		"scala-releases"  at "http://scala-tools.org/repo-releases",
 		"Codahale" at "http://conikeec.github.com/jerkson/repository/",
 		"Apache HBase" at "https://repository.apache.org/content/repositories/releases",
 		"Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases",
@@ -39,5 +39,30 @@ libraryDependencies ++= Seq(
 	"org.joda" % "joda-convert" % "1.1"
 	)
 
+/* publishing */
+publishMavenStyle := true
 
+publishTo <<= version { (v: String) =>
+  val cphy = "https://cloudphysics.artifactoryonline.com/cloudphysics/"
+  if (v.trim.endsWith("SNAPSHOT")) Some(
+    "cphy snapshots" at cphy + "oss-snapshots-local"
+  )
+  else Some("releases" at cphy + "oss-releases-local")
+}
+
+credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
+
+publishArtifact in Test := false
+
+pomIncludeRepository := { _ => false }
+
+pomExtra := (
+  <developers>
+    <developer>
+      <id>cphy</id>
+      <name>CloudPhysics Inc</name>
+      <email>opensource@cloudphysics.com</email>
+    </developer>
+  </developers>
+)
 
