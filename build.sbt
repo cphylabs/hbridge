@@ -16,14 +16,12 @@ resolvers ++= Seq(
 		"ClouderaRepo" at "https://repository.cloudera.com/content/repositories/releases",
 		"ClouderaRcs" at "https://repository.cloudera.com/artifactory/cdh-releases-rcs",
 		"CRepos" at "https://repository.cloudera.com/artifactory/cloudera-repos/",
-		"scala-snapshots" at "http://scala-tools.org/repo-snapshots",
-		"scala-releases"  at "http://scala-tools.org/repo-releases",
+		"Sonatype Scala-Tools"  at "https://oss.sonatype.org/content/groups/scala-tools/",
 		"Codahale" at "http://conikeec.github.com/jerkson/repository/",
 		"Apache HBase" at "https://repository.apache.org/content/repositories/releases",
 		"Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases",
 		"Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/snapshots/",
-		"Twitter Repository" at "http://maven.twttr.com",
-		"Local Ivy Repository" at "file://" + System.getProperty("user.home") + "/.iv2/local"
+		"Twitter Repository" at "http://maven.twttr.com"
 	)
 	
 
