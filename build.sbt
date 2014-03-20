@@ -5,7 +5,9 @@ name := "hbridge"
 
 version := "1.1.9"
 
-scalaVersion := "2.10.0"
+scalaVersion := "2.9.1"
+
+crossScalaVersions:= Seq("2.9.2", "2.9.1")
 
 retrieveManaged := true
 
@@ -27,7 +29,7 @@ libraryDependencies ++= Seq(
     "org.apache.hbase" % "hbase" % "0.92.0" excludeAll (
      ExclusionRule(organization = "org.jruby", name="jruby-complete"),
      ExclusionRule(organization = "org.slf4j", name="slf4j-log4j12")),
-	"org.clapper" % "grizzled-slf4j_2.10" % "1.0.1",
+	"org.clapper" %% "grizzled-slf4j" % "0.6.10",
 	"joda-time" % "joda-time" % "2.0",
 	"org.joda" % "joda-convert" % "1.1"
 	)
