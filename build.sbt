@@ -22,11 +22,11 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
     "org.apache.hadoop" % "hadoop-client" % "1.0.3" excludeAll (
-     ExclusionRule(organization = "org.jruby"),
-     ExclusionRule(organization = "org.slf4j")) ,
+     ExclusionRule(organization = "org.jruby", name="jruby-complete"),
+     ExclusionRule(organization = "org.slf4j", name="slf4j-log4j12")) ,
     "org.apache.hbase" % "hbase" % "0.92.0" excludeAll (
-     ExclusionRule(organization = "org.jruby"),
-     ExclusionRule(organization = "org.slf4j")),
+     ExclusionRule(organization = "org.jruby", name="jruby-complete"),
+     ExclusionRule(organization = "org.slf4j", name="slf4j-log4j12")),
 	"org.clapper" % "grizzled-slf4j_2.10" % "1.0.1",
 	"joda-time" % "joda-time" % "2.0",
 	"org.joda" % "joda-convert" % "1.1"
