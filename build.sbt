@@ -9,15 +9,9 @@ scalaVersion := "2.10.0"
 
 retrieveManaged := true
 
-// Global Repository resolver
-resolvers ++= Seq(
-		"Thrift-Repo" at "http://people.apache.org/~rawson/repo",
-		"Sonatype Scala-Tools"  at "https://oss.sonatype.org/content/groups/scala-tools/",
-		"Apache HBase" at "https://repository.apache.org/content/repositories/releases",
-		"Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases",
-		"Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/snapshots/",
-		"Twitter Repository" at "http://maven.twttr.com"
-	)
+externalResolvers <<= resolvers map { rs =>
+    Resolver.withDefaultResolvers(rs, mavenCentral = false)
+}
 
 resolvers += "CPhy-Artifactory" at "https://cloudphysics.artifactoryonline.com/cloudphysics/releases/"
 
