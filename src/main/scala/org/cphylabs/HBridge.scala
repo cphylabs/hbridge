@@ -203,7 +203,11 @@ object HBridge extends Logging {
 
 class HBridge(htablePool: Option[HTablePool], tableName: String) extends Logging {
 
-  val table: HTable = htablePool.get.getTable(tableName).asInstanceOf[HTable]
+  // TODO: Replace HTablePool by HConnection. HTablePool was deprecated in 0.94
+  //       See: HBase Book 0.94 Section 9.3.1.1. Connection Pooling
+  //            http://hbase.apache.org/0.94/book.html#client
+  val table: HTableInterface = htablePool.get.getTable(tableName).asInstanceOf[HTableInterface]
+
   def closeTablePool(tableName: String) = if (!htablePool.eq(None)) htablePool.get.closeTablePool(tableName)
   //def putTable = htablePool.get.putTable(table)
   def putTable = table.close
